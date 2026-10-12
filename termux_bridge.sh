@@ -10,7 +10,7 @@ for p in git python nodejs; do command -v "${p/python/python3}" >/dev/null 2>&1 
 export DISABLE_AUTOUPDATER=1
 command -v claude >/dev/null 2>&1 || npm install -g @anthropic-ai/claude-code@2.1.112
 command -v claude >/dev/null 2>&1 || { echo "claude CLI install nahi hua"; exit 1; }
-claude --version 2>&1 | grep -qi "native binary not installed" && { echo "Is claude version ko native binary chahiye. Chalao: npm install -g @anthropic-ai/claude-code@2.1.112"; exit 1; }
+claude --version >/dev/null 2>&1 || { echo "claude chal nahi raha. Chalao: DISABLE_AUTOUPDATER=1 npm install -g @anthropic-ai/claude-code@2.1.112"; exit 1; }
 [ -f "$HOME/.drh_token" ] || { read -r -s -p "Hub token: " T; echo; printf '%s' "$T" > "$HOME/.drh_token"; chmod 600 "$HOME/.drh_token"; }
 export HUB="${HUB:-$HUB_DEFAULT}" TOKEN="$(cat "$HOME/.drh_token")"
 git checkout -- worker.zip 2>/dev/null; git pull -q 2>/dev/null || true   # latest bridge/worker files
