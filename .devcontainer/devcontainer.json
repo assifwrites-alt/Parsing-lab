@@ -1,0 +1,6 @@
+{
+  "name": "Dr Harry Lab worker",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "postCreateCommand": "bash setup.sh",
+  "hostRequirements": { "cpus": 4, "memory": "8gb" }
+}
