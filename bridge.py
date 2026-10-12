@@ -107,10 +107,12 @@ def record_edits(cmd):
 
 def main():
     setup_workdir()
-    since = int(time.time() * 1000); runs = []
+    since = int(time.time() * 1000); runs = []; last_hb = 0
     print("Bridge chal raha hai. Ctrl+C se band.")
     while True:
         try:
+            if time.time() - last_hb > 15:
+                call("bridgehb", qs="&host=" + os.uname().nodename[:30]); last_hb = time.time()
             for c in call("cmds", qs=f"&since={since}").get("cmds", []):
                 since = max(since, c["ts"])
                 if c.get("by") != "web":

@@ -60,7 +60,7 @@ case 'state': {
     $cmds = []; if (is_file($CMDS)) { $L = array_slice(file($CMDS, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES), -40); foreach ($L as $l) { $j = json_decode($l, true); if ($j) $cmds[] = $j; } }
     foreach ($w as $k => $x) $w[$k]['ago'] = $now - (int)($x['seen'] ?? 0);
     usort($jobs, fn($x, $y) => ($y['created'] ?? 0) <=> ($x['created'] ?? 0));
-    out(['ok' => true, 'now' => $now, 'jobs' => $jobs, 'workers' => array_values($w), 'cmds' => $cmds, 'agent' => !empty($CFG['anthropic_key'])]);
+    out(['ok' => true, 'now' => $now, 'jobs' => $jobs, 'workers' => array_values($w), 'cmds' => $cmds, 'agent' => !empty($CFG['anthropic_key']), 'bridge_ago' => (function () use ($DATA, $now) { $b = jload("$DATA/bridge.json", []); return isset($b['ts']) ? $now - (int)$b['ts'] : null; })()]);
 }
 case 'upload': {   // POST raw chunk: id, name, idx, total, size
     $id = safe_id($_GET['id'] ?? ''); $name = safe_name($_GET['name'] ?? 'file.pdf'); $idx = (int)($_GET['idx'] ?? 0); $total = max(1, (int)($_GET['total'] ?? 1)); $size = (int)($_GET['size'] ?? 0);
@@ -197,6 +197,9 @@ case 'think': {    // run the on-hub Claude agent for web command ?id=<cmd id> (
 case 'workerzip': { // latest worker.zip (Claude-edited version if it exists, else the repo one)
     $f = is_file("$DATA/worker_live.zip") ? "$DATA/worker_live.zip" : __DIR__ . '/worker.zip'; if (!is_file($f)) bad('worker.zip nahi', 404);
     header('Content-Type: application/zip'); header('Content-Disposition: attachment; filename="worker.zip"'); header('Content-Length: ' . filesize($f)); readfile($f); exit;
+}
+case 'bridgehb': { // Termux/PC bridge heartbeat (shown as 'Claude online' on the site)
+    jmod("$DATA/bridge.json", function ($x) { return ['ts' => time(), 'host' => substr((string)($_GET['host'] ?? ''), 0, 40)]; }); out(['ok' => true]);
 }
 case 'doctor': {   // worker posts its doctor.py report at startup
     $j = json_decode(file_get_contents('php://input'), true); if (!is_array($j)) bad('doctor report samajh nahi aaya');

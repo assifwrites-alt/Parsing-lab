@@ -142,7 +142,7 @@ textarea{width:100%;min-height:90px;font:inherit;font-size:15px;color:var(--ink)
   <div class="logo" aria-hidden="true">DH</div>
   <div class="brand"><b>Dr Harry Lab</b><small>Parsing &amp; scraping console</small></div>
   <div class="sp"></div>
-  <div class="chips"><span class="pill" id="hubState"><i></i>hub: dhoondh raha hoon…</span><span class="pill" id="wkState"><i></i>worker: ?</span></div>
+  <div class="chips"><span class="pill" id="hubState"><i></i>hub: dhoondh raha hoon…</span><span class="pill" id="wkState"><i></i>worker: ?</span><span class="pill" id="brState"><i></i>Claude: ?</span></div>
   <button class="tbtn" id="healthBtn" type="button">Health</button><button class="tbtn" id="theme" type="button" aria-label="Theme badlo">Theme</button>
 </div></header>
 
@@ -301,6 +301,8 @@ async function poll(){
   render(cur,j);kpis(j);jobList(j,cur);chat(j);
   const w=j.workers.filter(x=>x.ago<60);
   w.length?setPill($("wkState"),"ok","worker online"):setPill($("wkState"),"warn","worker offline");
+  const bo=j.bridge_ago!=null&&j.bridge_ago<60;
+  bo?setPill($("brState"),"ok","Claude online (Termux)"):j.agent?setPill($("brState"),"ok","Claude online (site)"):setPill($("brState"),"warn","Claude offline: Termux bridge chalao");
 }
 
 const REPO="assifwrites-alt/Parsing-lab";
