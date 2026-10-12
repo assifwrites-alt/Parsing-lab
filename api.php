@@ -110,7 +110,7 @@ case 'result': {   // worker POST raw chunk of the result zip: id, idx, total
     out(['ok' => true, 'done' => $done]);
 }
 case 'fail': {
-    $j = json_decode(file_get_contents('php://input'), true); $id = safe_id((string)($j['id'] ?? '')); $err = substr((string)($j['error'] ?? 'error'), 0, 400);
+    $j = json_decode(file_get_contents('php://input'), true); $id = safe_id((string)($j['id'] ?? '')); $err = substr((string)($j['error'] ?? 'error'), 0, 1500);
     jmod($JOBS, function ($all) use ($id, $err) { if (isset($all[$id])) { $all[$id]['status'] = 'failed'; $all[$id]['stage'] = 'fail: ' . $err; $all[$id]['updated'] = time(); } return $all; });
     out(['ok' => true]);
 }
@@ -142,6 +142,14 @@ case 'cmds': {     // Claude: ?since=<ms>
     $since = (int)($_GET['since'] ?? 0); $r = [];
     if (is_file($CMDS)) foreach (file($CMDS, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $l) { $j = json_decode($l, true); if ($j && ($j['ts'] ?? 0) > $since) $r[] = $j; }
     out(['ok' => true, 'cmds' => $r]);
+}
+case 'clear': {    // purana data saaf: finished (done) jobs + unke files/results, commands log, purane workers. running/queued/failed bachte hain.
+    $removed = 0; $ids = [];
+    jmod($JOBS, function ($all) use (&$removed, &$ids) { foreach ($all as $k => $x) { if (($x['status'] ?? '') === 'done') { $ids[] = $k; unset($all[$k]); $removed++; } } return $all; });
+    foreach ($ids as $id) { $id = safe_id((string)$id); @unlink("$DATA/files/$id.pdf"); @unlink("$DATA/results/$id.zip"); }
+    @file_put_contents($CMDS, '');
+    $now = time(); jmod($WORK, function ($w) use ($now) { foreach ($w as $k => $x) { if ($now - (int)($x['seen'] ?? 0) > 600) unset($w[$k]); } return $w; });
+    out(['ok' => true, 'removed_jobs' => $removed]);
 }
 default: bad('a=? samajh nahi aaya', 404);
 }

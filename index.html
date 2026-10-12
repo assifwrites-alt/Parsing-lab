@@ -3,432 +3,253 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b5e7a">
 <title>Dr Harry Lab</title>
-<meta name="description" content="Amedex 2025 aur PassMedicine 2026 qbank ka parsing, screening aur fixing record.">
+<meta name="description" content="PDF upload karo, parsing ka live progress dekho, result download karo.">
 <style>
-/* Layout: sticky section bar, one scrolling page. Tokens first; dark theme redefines tokens only. */
 :root{
-  --bg:#edf2f4;--card:#ffffff;--ink:#14232b;--muted:#566872;--line:#d2dce1;
-  --teal:#0b5e7a;--teal-ink:#0b5e7a;--teal-soft:#dfecf1;--coral:#d9532f;--purple:#5a3a73;
-  --ok:#2a8038;--ok-soft:#e2f1e4;--warn:#b87408;--bad:#c23b32;
-  --cell-p:#cfe0e7;--cell-r:#2f87a6;--cell-i:#7a55a0;--cell-t:#e0653f;
+  --bg:#edf2f4;--card:#fff;--ink:#14232b;--muted:#566872;--line:#d2dce1;
+  --teal:#0b5e7a;--teal-ink:#0b5e7a;--teal-soft:#dfecf1;
+  --ok:#2a8038;--ok-soft:#e2f1e4;--warn:#b87408;--warn-soft:#f8ecd2;--bad:#c23b32;--bad-soft:#f9e1de;
   --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --gut:clamp(12px,4vw,24px);
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#0b1418;--card:#13212a;--ink:#e3ecf0;--muted:#8da2ad;--line:#25353e;
-  --teal:#2f87a6;--teal-ink:#5fc0df;--teal-soft:#183240;--coral:#f0734e;--purple:#a88bd0;
-  --ok:#52c264;--ok-soft:#173222;--warn:#e0a13a;--bad:#ff6b60;
-  --cell-p:#27404c;--cell-r:#3aa6c8;--cell-i:#a88bd0;--cell-t:#f0734e;color-scheme:dark}}
+  --teal:#2f87a6;--teal-ink:#5fc0df;--teal-soft:#183240;
+  --ok:#52c264;--ok-soft:#173222;--warn:#e0a13a;--warn-soft:#3a2d12;--bad:#ff6b60;--bad-soft:#3d1c1a;color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0b1418;--card:#13212a;--ink:#e3ecf0;--muted:#8da2ad;--line:#25353e;
-  --teal:#2f87a6;--teal-ink:#5fc0df;--teal-soft:#183240;--coral:#f0734e;--purple:#a88bd0;
-  --ok:#52c264;--ok-soft:#173222;--warn:#e0a13a;--bad:#ff6b60;
-  --cell-p:#27404c;--cell-r:#3aa6c8;--cell-i:#a88bd0;--cell-t:#f0734e;color-scheme:dark}
+  --teal:#2f87a6;--teal-ink:#5fc0df;--teal-soft:#183240;
+  --ok:#52c264;--ok-soft:#173222;--warn:#e0a13a;--warn-soft:#3a2d12;--bad:#ff6b60;--bad-soft:#3d1c1a;color-scheme:dark}
 *{box-sizing:border-box}
-html{scroll-behavior:smooth;scroll-padding-top:64px}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 var(--sans);-webkit-text-size-adjust:100%}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 var(--sans);overflow-x:hidden;
+  padding-bottom:max(24px,env(safe-area-inset-bottom))}
 a{color:var(--teal-ink)}
-.wrap{max-width:1080px;margin:0 auto;padding-inline:16px}
-header.top{background:var(--teal);color:#fff;padding-block:22px 18px}
-header.top .wrap{display:flex;gap:14px 20px;align-items:center;justify-content:space-between;flex-wrap:wrap}
-.brand{display:flex;gap:14px;align-items:center;min-width:0}
-.brand svg{width:44px;height:44px;flex:none}
-.brand h1{margin:0;font-size:clamp(22px,5vw,32px);letter-spacing:.01em;line-height:1.1}
-.brand p{margin:4px 0 0;opacity:.85;font-size:14px;max-width:46ch}
-.tbtn{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:6px;padding:7px 12px;font:inherit;font-size:14px;cursor:pointer}
-nav.bar{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line)}
-nav.bar .wrap{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
-nav.bar a{flex:none;padding:14px 12px;font-size:14px;font-weight:600;color:var(--muted);text-decoration:none;border-bottom:3px solid transparent}
-nav.bar a.on,nav.bar a:hover{color:var(--teal-ink);border-bottom-color:var(--teal)}
-main{padding-block:8px 56px}
-section{padding-top:34px}
-h2{margin:0 0 4px;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--teal-ink)}
-h3.lead{margin:0 0 14px;font-size:clamp(20px,3.6vw,26px);line-height:1.25;text-wrap:balance}
-.sub{color:var(--muted);margin:0 0 16px;max-width:70ch}
-.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
-.tile{padding:14px}
-.tile b{display:block;font:700 clamp(26px,5vw,34px)/1.1 var(--mono);font-variant-numeric:tabular-nums}
-.tile span{display:block;color:var(--muted);font-size:13px;margin-top:4px}
-.tile.ok b{color:var(--ok)}
-.flow{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
-.flow span{background:var(--teal-soft);color:var(--teal-ink);border-radius:999px;padding:5px 12px;font-size:13px;font-weight:600}
-.flow span+span::before{content:"→";margin-right:8px;opacity:.6}
-.meter{height:10px;background:var(--cell-p);border-radius:6px;overflow:hidden}
-.meter i{display:block;height:100%;background:var(--teal);border-radius:6px}
-.meter.ok i{background:var(--ok)}
-.meter.warn i{background:var(--warn)}
-.row{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,2fr) auto;gap:6px 14px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
-.row:last-child{border-bottom:0}
-.row .n{font-weight:600;overflow-wrap:anywhere}
-.row .v{font:600 13px var(--mono);color:var(--muted);white-space:nowrap}
-@media (max-width:560px){.row{grid-template-columns:1fr auto}.row .meter{grid-column:1/-1;order:3}}
-.ctrl{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
-.ctrl input{flex:1 1 220px;min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);font:inherit}
-.legend{display:flex;gap:6px 14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-bottom:12px}
-.legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;vertical-align:-1px}
-details.sub-acc{background:var(--card);border:1px solid var(--line);border-radius:8px;margin-bottom:10px}
-details.sub-acc>summary{cursor:pointer;list-style:none;padding:14px 16px;display:flex;gap:10px 14px;align-items:center;flex-wrap:wrap}
-details.sub-acc>summary::-webkit-details-marker{display:none}
-details.sub-acc>summary b{font-size:17px;flex:1 1 180px}
-.pill{font:600 12px var(--mono);padding:3px 9px;border-radius:999px;background:var(--teal-soft);color:var(--teal-ink);white-space:nowrap}
-.pill.ok{background:var(--ok-soft);color:var(--ok)}
-.file{border-top:1px solid var(--line);padding:14px 16px}
-.file h4{margin:0 0 6px;font-size:15px;overflow-wrap:anywhere}
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
-.cells{display:flex;flex-wrap:wrap;gap:3px}
-.cells i{width:13px;height:13px;border-radius:2px;background:var(--cell-p)}
-.cells i.r{background:var(--cell-r)}.cells i.i{background:var(--cell-i)}.cells i.t{background:var(--cell-t)}
-.tablewrap{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
-th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
-th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
-td.num,th.num{text-align:right;font-family:var(--mono)}
-.big{display:flex;gap:18px;align-items:baseline;flex-wrap:wrap;margin-bottom:14px}
-.big b{font:700 clamp(40px,9vw,64px)/1 var(--mono);color:var(--ok)}
-.big span{color:var(--muted)}
-ul.plain{margin:0;padding-left:1.2em}
-ul.plain li{margin:6px 0}
-.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:12px}
-.dl{display:flex;flex-direction:column;gap:4px;text-decoration:none;color:inherit}
-.dl b{color:var(--teal-ink)}
-.dl span{font-size:13px;color:var(--muted)}
-.p26{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
-.p26 .card{padding:12px}
-.p26 b{display:block;margin-bottom:6px}
-header.top{background:linear-gradient(135deg,#0b5e7a 0%,#0a4a63 55%,#4a2d5c 140%)}
-.hero-stats{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-.hero-stats span{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:3px 11px;font:600 12px var(--mono)}
-.live-pill{display:inline-flex;align-items:center;gap:7px;font:600 12px var(--mono);padding:4px 11px;border-radius:999px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);color:#fff}
-.live-pill i{width:8px;height:8px;border-radius:50%;background:#9db3bd}
-.live-pill.on i{background:#58e06b;box-shadow:0 0 0 3px rgba(88,224,107,.28)}
-.card{box-shadow:0 1px 2px rgba(10,40,55,.05)}
-.fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:0 0}
-.file .fm{display:grid;grid-template-columns:78px 1fr auto;gap:4px 10px;align-items:center;margin:8px 0}
-.file .fm label{font-size:12px;color:var(--muted)}
-.file .fm .v{font:600 12px var(--mono);color:var(--muted)}
-.jobs{display:grid;gap:10px}
-.job{border:1px solid var(--line);border-radius:8px;padding:10px 12px}
-.job .t{display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;font-weight:600}
-.job .t em{font:600 12px var(--mono);font-style:normal;color:var(--muted)}
-.job small{display:block;color:var(--muted);margin:4px 0 6px;overflow-wrap:anywhere}
-.job.run{border-color:var(--teal)}.job.fail{border-color:var(--bad)}
-.feed{max-height:260px;overflow:auto;font:12px/1.6 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere}
-.feed .t{color:var(--muted)}
-.cmdbox{display:flex;gap:8px;margin-top:12px}
-.cmdbox input[type=text]{flex:1;min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);font:inherit}
-.cmdbox button{border:0;border-radius:6px;padding:0 16px;font:600 14px var(--sans);cursor:pointer}
-.cmdbox .send{background:var(--teal);color:#fff}.cmdbox .att{background:var(--card);color:var(--teal-ink);border:1px solid var(--line)}
-.thumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.thumbs img{width:56px;height:56px;object-fit:cover;border-radius:4px;border:1px solid var(--line)}
-.hint2{font-size:12px;color:var(--muted);margin-top:6px}
-#parse .card{margin-bottom:12px}
-.drop{border:2px dashed var(--line);border-radius:8px;padding:18px;text-align:center;color:var(--muted);cursor:pointer}
-.drop.on{border-color:var(--teal);color:var(--ink);background:var(--teal-soft)}
-.hub-set{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:8px;margin-top:10px}
-.hub-set input{padding:9px 11px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);font:inherit;min-width:0}
-.pj{border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:10px}
-.pj .t{display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;align-items:center}
-.pj .t b{overflow-wrap:anywhere}
-.st{font:600 12px var(--mono);padding:3px 9px;border-radius:999px;background:var(--teal-soft);color:var(--teal-ink)}
-.st.done{background:var(--ok-soft);color:var(--ok)}.st.failed{background:#fbe4e1;color:var(--bad)}.st.running{background:#fdf0d8;color:var(--warn)}
-.pj small{display:block;color:var(--muted);margin:5px 0;overflow-wrap:anywhere}
-.pj .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-.pj .acts a,.pj .acts button{font:600 13px var(--sans);padding:6px 12px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--teal-ink);text-decoration:none;cursor:pointer}
-.pj .sub{display:grid;grid-template-columns:130px 1fr auto;gap:2px 10px;align-items:center;font-size:12px;margin-top:4px}
-@media (max-width:560px){.pj .sub{grid-template-columns:1fr auto}.pj .sub .meter{grid-column:1/-1}}
-footer{border-top:1px solid var(--line);padding-block:22px;color:var(--muted);font-size:13px}
-:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
-@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+.wrap{width:100%;max-width:820px;margin:0 auto;padding-inline:var(--gut)}
+header.top{background:var(--teal);color:#fff;padding:max(18px,env(safe-area-inset-top)) 0 18px}
+header.top .wrap{display:flex;gap:12px;align-items:center;justify-content:space-between}
+header.top h1{margin:0;font-size:clamp(20px,5.5vw,28px);line-height:1.15}
+header.top p{margin:3px 0 0;font-size:14px;opacity:.88}
+.tbtn{flex:none;min-height:40px;background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.45);
+  border-radius:8px;padding:6px 12px;font:inherit;font-size:14px;cursor:pointer}
+main{display:grid;gap:14px;padding-block:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:clamp(12px,3.5vw,18px);min-width:0}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--card);
+  border-radius:999px;padding:5px 12px;font-size:13px;line-height:1.3;max-width:100%;overflow-wrap:anywhere}
+.pill i{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+.pill.ok{background:var(--ok-soft);border-color:transparent;color:var(--ok)}.pill.ok i{background:var(--ok)}
+.pill.bad{background:var(--bad-soft);border-color:transparent;color:var(--bad)}.pill.bad i{background:var(--bad)}
+.pill.warn{background:var(--warn-soft);border-color:transparent;color:var(--warn)}.pill.warn i{background:var(--warn)}
+details.set summary{cursor:pointer;font-size:14px;color:var(--muted);min-height:32px;display:flex;align-items:center}
+.hub-set{display:grid;gap:8px;margin-top:10px}
+input[type=text],input[type=password],input:not([type]){width:100%;min-height:44px;font:inherit;font-size:16px;color:var(--ink);
+  background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+.drop{display:grid;place-items:center;text-align:center;gap:4px;border:2px dashed var(--line);border-radius:12px;
+  padding:clamp(20px,6vw,34px) 14px;color:var(--muted);cursor:pointer;background:var(--card)}
+.drop b{color:var(--ink);font-size:17px}
+.drop.on{border-color:var(--teal);background:var(--teal-soft)}
+.drop small{font-size:13px}
+h2{margin:0 0 10px;font-size:15px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.pj .t{display:flex;gap:10px;align-items:flex-start;justify-content:space-between}
+.pj .t b{font-size:clamp(16px,4.4vw,19px);overflow-wrap:anywhere;line-height:1.3}
+.st{flex:none;border-radius:999px;padding:3px 11px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  background:var(--teal-soft);color:var(--teal-ink)}
+.st.done{background:var(--ok-soft);color:var(--ok)}.st.failed{background:var(--bad-soft);color:var(--bad)}
+.st.queued{background:var(--warn-soft);color:var(--warn)}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin:6px 0 10px;font-size:13px;color:var(--muted)}
+.big{display:flex;align-items:baseline;gap:10px;margin:2px 0 6px}
+.big b{font-size:clamp(28px,9vw,40px);line-height:1;font-variant-numeric:tabular-nums}
+.big span{color:var(--muted);font-size:14px;min-width:0;overflow-wrap:anywhere}
+.meter{height:10px;border-radius:99px;background:var(--teal-soft);overflow:hidden}
+.meter i{display:block;height:100%;width:0;background:var(--teal);border-radius:99px;transition:width .5s}
+.meter.ok i{background:var(--ok)}.meter.bad i{background:var(--bad)}
+.steps{display:grid;gap:10px;margin-top:14px}
+.step{display:grid;grid-template-columns:1fr auto;gap:2px 10px;font-size:14px}
+.step .meter{grid-column:1/-1;height:7px}
+.step .v{color:var(--muted);font-variant-numeric:tabular-nums;font-size:13px}
+.step span:first-child{min-width:0;overflow-wrap:anywhere}
+.detail{margin-top:10px;font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.err{margin-top:12px;border-radius:8px;background:var(--bad-soft);color:var(--bad);padding:10px 12px;font:12px/1.5 var(--mono);
+  white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow:auto}
+.acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.acts a,.acts button,.send{min-height:44px;display:inline-flex;align-items:center;justify-content:center;padding:8px 16px;border-radius:8px;
+  border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-size:15px;cursor:pointer;text-decoration:none}
+.acts .pri,.send{background:var(--teal);border-color:var(--teal);color:#fff}
+.acts .dng{color:var(--bad)}
+.empty{margin:0;color:var(--muted);text-align:center;padding:10px 0}
+.note{font-size:13px;color:var(--muted);margin:10px 0 0}
+.cmdbox{display:grid;grid-template-columns:1fr auto;gap:8px}
+.feed{margin-top:10px;max-height:150px;overflow:auto;font:12px/1.6 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--muted)}
+.maint{display:flex;justify-content:flex-end}
+.maint button{min-height:40px;background:none;border:0;color:var(--muted);font:inherit;font-size:13px;text-decoration:underline;cursor:pointer}
+@media (min-width:700px){.hub-set{grid-template-columns:1fr 1fr}.step{grid-template-columns:minmax(0,1fr) auto}}
+@media (prefers-reduced-motion:reduce){.meter i{transition:none}}
 </style>
 </head>
 <body>
 <header class="top"><div class="wrap">
-  <div class="brand">
-    <svg viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="10" fill="rgba(255,255,255,.14)"/><path d="M24 8c-8 0-13 5.5-13 12 0 4 2 6.5 4 8v5h5v-3h2v3h4v-3h2v3h5v-5c2-1.5 4-4 4-8 0-6.500-5-12-13-12z" fill="#fff"/><circle cx="18.500" cy="21" r="3.200" fill="#0b5e7a"/><circle cx="29.500" cy="21" r="3.200" fill="#0b5e7a"/></svg>
-    <div><h1>Dr Harry Lab</h1><p>Universal parsing platform: koi bhi PDF upload karo, parse hone ka live progress dekho, output yahin save aur download. (Neeche Amedex/Pass qbank ka purana record bhi hai.)</p><div class="hero-stats" id="heroStats"></div></div>
-  </div>
-  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="live-pill" id="livePill"><i></i><span id="liveTxt">static</span></span><button class="tbtn" id="theme" type="button">Theme badlo</button></div>
+  <div><h1>Dr Harry Lab</h1><p>PDF upload karo, live progress dekho, result download karo</p></div>
+  <button class="tbtn" id="theme" type="button">Theme</button>
 </div></header>
-<nav class="bar" aria-label="Sections"><div class="wrap" id="nav"></div></nav>
+
 <main class="wrap">
-
-<section id="live" hidden><h2>Live</h2><h3 class="lead">Abhi kya chal raha hai</h3>
-  <div class="grid2">
-    <div class="card"><b>Progress bars</b><div class="jobs" id="jobs" style="margin-top:10px"><p class="sub" style="margin:0">Abhi koi kaam nahi chal raha.</p></div></div>
-    <div class="card"><b>Claude ki activity</b><div class="feed" id="feed" style="margin-top:8px"></div></div>
-  </div>
-  <div class="card" style="margin-top:12px"><b>Command bhejo</b>
-    <form class="cmdbox" id="cmdForm"><input type="text" id="cmdIn" maxlength="1000" placeholder="command likho…" autocomplete="off" aria-label="Command"><button type="button" class="att" id="attBtn">+ img</button><button class="send" id="cmdBtn">Send</button></form>
-    <input type="file" id="fileIn" accept="image/*" multiple hidden>
-    <div class="thumbs" id="thumbs"></div><div class="hint2" id="hint">Error ki screenshot lagao (max 6), phir Send.</div>
-    <div class="feed" id="cmds" style="margin-top:10px;max-height:160px"></div>
-  </div>
-</section>
-
-<section id="parse"><h2>Upload &amp; Parse</h2><h3 class="lead">PDF yahin upload karo, parsing doosri machine par hogi</h3>
-  <p class="sub">Phone sirf upload karta hai. Parsing worker (Hostinger VPS ya Colab) par chalti hai aur progress yahan live dikhta hai.</p>
-  <div class="card">
-    <div class="chips" style="margin-bottom:6px"><span class="pill" id="hubState">hub: dhoondh raha hoon…</span><span class="pill" id="wkState">worker: ?</span></div>
-    <div class="drop" id="drop"><b>PDF / HTML yahan chhodo ya dabao</b><div style="font-size:13px">(PDF ya HTML/MHTML, kitni bhi badi; chhote tukdon mein upload hoti hain)</div></div>
-    <input type="file" id="pfile" accept="application/pdf,.pdf,.html,.htm,.mhtml,.mht" multiple hidden>
-    <details style="margin-top:10px"><summary style="cursor:pointer;color:var(--teal-ink);font-weight:600">Hub ki settings</summary>
-      <div class="hub-set"><input id="hubUrl" placeholder="hub URL (khali = isi folder ka api.php)" aria-label="Hub URL"><input id="hubTok" type="password" placeholder="token" aria-label="Token"></div>
-      <div class="hint2">Token config.php mein likha hota hai. Claude ko jodne ke liye yehi URL aur token usse do.</div>
+  <section class="card">
+    <div class="chips"><span class="pill" id="hubState"><i></i>hub: dhoondh raha hoon…</span><span class="pill" id="wkState"><i></i>worker: ?</span></div>
+    <details class="set"><summary>Hub settings</summary>
+      <div class="hub-set"><input id="hubUrl" placeholder="hub URL (khali = isi site ka api.php)" aria-label="Hub URL" autocomplete="off"><input id="hubTok" type="password" placeholder="token" aria-label="Token" autocomplete="off"></div>
     </details>
-  </div>
-  <div id="pjobs"></div>
-  <div class="card"><b>Claude ko command</b><form class="cmdbox" id="hcmdForm"><input type="text" id="hcmdIn" maxlength="1000" placeholder="command likho…" autocomplete="off" aria-label="Command"><button class="send" id="hcmdBtn">Send</button></form><div class="feed" id="hcmds" style="margin-top:10px;max-height:150px"></div></div>
-</section>
+  </section>
 
-<section id="outs"><h2>Outputs</h2><h3 class="lead">Parse ho chuki saari files, sample ke saath</h3><div id="outList"><p class="sub">Load ho raha hai…</p></div></section>
+  <div class="drop" id="drop" role="button" tabindex="0"><b>PDF / HTML yahan chhodo ya dabao</b><small>PDF ya HTML/MHTML, kitni bhi badi; chhote tukdon mein upload hoti hai</small></div>
+  <input type="file" id="pfile" accept="application/pdf,.pdf,.html,.htm,.mhtml,.mht" multiple hidden>
 
-<section id="overview"><h2>Overview</h2><h3 class="lead" id="ovLead"></h3>
-  <div class="tiles" id="tiles"></div>
-  <div class="card" style="margin-top:12px"><b>Kaam ka raasta</b>
-    <div class="flow"><span>PDF screenshots</span><span>OCR</span><span>Parse</span><span>PDF se screening</span><span>Flags fix</span><span>JSON + website</span></div>
-  </div>
-</section>
+  <section class="card pj" id="cur" aria-live="polite"><p class="empty">Abhi koi file nahi. Upar PDF chhodo.</p></section>
 
-<section id="qbank"><h2>QBank</h2><h3 class="lead">Har subject ki har file, sawal ke naqshe ke saath</h3>
-  <p class="sub">Har chhota khana ek sawal hai. Rang batata hai us sawal par kya kaam hua.</p>
-  <div class="ctrl"><input id="q" type="search" placeholder="file ya subject dhoondo…" aria-label="Search files"></div>
-  <div class="legend"><span><i style="background:var(--cell-p)"></i>seedha theek</span><span><i style="background:var(--cell-r)"></i>fix hua</span><span><i style="background:var(--cell-i)"></i>tasveer wala</span><span><i style="background:var(--cell-t)"></i>table tasveer</span></div>
-  <div id="subjects"></div>
-</section>
+  <section class="card">
+    <h2>Claude ko command</h2>
+    <form class="cmdbox" id="cmdForm"><input type="text" id="cmdIn" maxlength="1000" placeholder="command likho…" autocomplete="off" aria-label="Command"><button class="send" id="cmdBtn">Send</button></form>
+    <div class="feed" id="cmds"></div>
+  </section>
 
-<section id="progress"><h2>Progress</h2><h3 class="lead">Sab kuch kitna ho chuka</h3>
-  <div class="card" id="meters"></div>
-  <h3 class="lead" style="margin-top:22px;font-size:18px">Subject-wise sawal</h3>
-  <div class="card" id="bySubject"></div>
-</section>
-
-<section id="flagged"><h2>Flagged</h2><h3 class="lead">Jo sawal shak mein the, unka hisaab</h3>
-  <div class="big"><b id="flBig"></b><span id="flSub"></span></div>
-  <div class="card tablewrap"><table><thead><tr><th>Subject</th><th class="num">Mile</th><th class="num">Band</th><th class="num">Baqi</th><th style="min-width:140px">Progress</th></tr></thead><tbody id="flRows"></tbody></table></div>
-</section>
-
-<section id="screening"><h2>Screening</h2><h3 class="lead">Har sawal ko PDF ke screenshots se milaya gaya</h3>
-  <div class="grid2">
-    <div class="card"><b>Jo jaanch hui</b><ul class="plain" id="scList"></ul></div>
-    <div class="card"><b>Jo faisle liye gaye</b><ul class="plain" id="scDecide"></ul></div>
-  </div>
-</section>
-
-<section id="fixes"><h2>Fixing</h2><h3 class="lead">Kis tarah ke fix kitni baar lage</h3>
-  <p class="sub">Ek sawal mein ek se zyada fix ho sakte hain, isliye ginti sawalon se zyada ho sakti hai.</p>
-  <div class="card" id="fixRows"></div>
-  <div class="tiles" id="fixTiles" style="margin-top:12px"></div>
-</section>
-
-<section id="images"><h2>Images</h2><h3 class="lead">Tasveerein: kitni nikalin, kitni sawalon mein lagi</h3>
-  <div class="card" id="imgRows"></div>
-</section>
-
-<section id="pass"><h2>Pass 2026</h2><h3 class="lead">PassMedicine qbank, 16 subjects</h3>
-  <div class="p26" id="p26"></div>
-</section>
-
-<section id="downloads"><h2>Downloads</h2><h3 class="lead">Website par upload hone wali files</h3>
-  <p class="sub">Neeche ki files is page ke saath ek hi folder mein rakho, to links chalenge.</p>
-  <div class="grid2" id="dl"></div>
-</section>
+  <div class="maint"><button type="button" id="clearOld">Purana data saaf karo</button></div>
 </main>
-<footer><div class="wrap">Dr Harry Lab · data <span id="gen"></span> ko asli outputs se banaya gaya</div></footer>
 
 <script>
-const D={"generated": "2026-10-11", "totals": {"q": 1461, "ans": 1461, "pages": 7461, "imgFiles": 340, "imgUsed": 273, "tables": 10, "repaired": 910, "links": 1212, "flagFound": 759, "flagFixed": 759, "pdfs": 48, "subjects": 22}, "removed": 6, "optionDots": 7263, "fixes": [{"name": "Screens ke beech ka kata hissa jodna", "n": 1353}, {"name": "Tables theek kiye (rows, columns, tasveer)", "n": 275}, {"name": "Chhoti safai (OCR galtiyan, spacing)", "n": 162}, {"name": "App bar ke peeche chhupa text", "n": 51}, {"name": "Chat-bubble se kati line / word theek", "n": 43}, {"name": "Answer ya heading ki pehchan theek ki", "n": 33}, {"name": "Link / reference saaf kiya", "n": 1}], "subjects": [{"name": "CVS", "files": [{"name": "CVS 1-30", "q": 30, "ans": 30, "pages": 137, "imgFiles": 7, "imgUsed": 7, "tables": 0, "repaired": 17, "links": 25, "flagFound": 0, "flagFixed": 0, "qmap": "irrppprirrpppripprrrpprrprpprr"}, {"name": "CVS 31-96", "q": 66, "ans": 66, "pages": 313, "imgFiles": 45, "imgUsed": 15, "tables": 0, "repaired": 38, "links": 58, "flagFound": 6, "flagFixed": 6, "qmap": "rrppppprrrrrrriprprrrrppprpprpirprprpirprprrprirprirrrppirppriipir"}]}, {"name": "Ethics", "files": [{"name": "Ethics 1-34", "q": 34, "ans": 34, "pages": 162, "imgFiles": 0, "imgUsed": 0, "tables": 0, "repaired": 23, "links": 29, "flagFound": 20, "flagFixed": 20, "qmap": "rrprpprrrrprpprrprrprprrrrrrrrprpr"}, {"name": "Ethics file 2", "q": 20, "ans": 20, "pages": 103, "imgFiles": 1, "imgUsed": 1, "tables": 1, "repaired": 14, "links": 15, "flagFound": 9, "flagFixed": 9, "qmap": "rprrprrprrprrrrrprpt"}, {"name": "Ethics file 3", "q": 30, "ans": 30, "pages": 149, "imgFiles": 0, "imgUsed": 0, "tables": 0, "repaired": 20, "links": 26, "flagFound": 15, "flagFixed": 15, "qmap": "prpprprrprprrrprrrrprrrprrprrr"}]}, {"name": "GIT", "files": [{"name": "GIT 1-40", "q": 40, "ans": 40, "pages": 185, "imgFiles": 9, "imgUsed": 7, "tables": 0, "repaired": 25, "links": 34, "flagFound": 16, "flagFixed": 16, "qmap": "rpprrrpprrpririrripirrppirrrrrrpppprirrp"}, {"name": "GIT 41-75", "q": 35, "ans": 35, "pages": 162, "imgFiles": 10, "imgUsed": 5, "tables": 0, "repaired": 19, "links": 26, "flagFound": 22, "flagFixed": 22, "qmap": "rirprrpprppppprrriprrrprprirpprpprp"}, {"name": "GIT 76-100", "q": 25, "ans": 25, "pages": 127, "imgFiles": 2, "imgUsed": 2, "tables": 0, "repaired": 18, "links": 20, "flagFound": 15, "flagFixed": 15, "qmap": "rpprriprprrrrrrrrirpprrpr"}]}, {"name": "GYNE", "files": [{"name": "Gyne 1 - 20", "q": 20, "ans": 20, "pages": 94, "imgFiles": 3, "imgUsed": 3, "tables": 0, "repaired": 11, "links": 13, "flagFound": 13, "flagFixed": 13, "qmap": "rprrrrpprprrrppiprpp"}, {"name": "Gyne 20-40", "q": 20, "ans": 20, "pages": 86, "imgFiles": 1, "imgUsed": 1, "tables": 0, "repaired": 10, "links": 15, "flagFound": 8, "flagFixed": 8, "qmap": "pppppprrrrprirrprrpp"}, {"name": "Gyne 40-60", "q": 20, "ans": 20, "pages": 89, "imgFiles": 3, "imgUsed": 2, "tables": 0, "repaired": 9, "links": 18, "flagFound": 10, "flagFixed": 10, "qmap": "prrppppirrrprrpppppr"}, {"name": "Gyne 61-85", "q": 21, "ans": 21, "pages": 105, "imgFiles": 4, "imgUsed": 2, "tables": 0, "repaired": 14, "links": 18, "flagFound": 12, "flagFixed": 12, "qmap": "rpippprrrrirprprrrrrr"}, {"name": "Gyne 86-109", "q": 21, "ans": 21, "pages": 100, "imgFiles": 2, "imgUsed": 2, "tables": 0, "repaired": 16, "links": 18, "flagFound": 8, "flagFixed": 8, "qmap": "prrrrrrprrrrriprpprrr"}]}, {"name": "Hematology", "files": [{"name": "Hema 1-39", "q": 38, "ans": 38, "pages": 216, "imgFiles": 4, "imgUsed": 4, "tables": 2, "repaired": 24, "links": 33, "flagFound": 23, "flagFixed": 23, "qmap": "rtrrrprprpprrrrrprrpppprprptrrpprrrrpr"}, {"name": "Hema 39-40", "q": 1, "ans": 1, "pages": 7, "imgFiles": 0, "imgUsed": 0, "tables": 0, "repaired": 1, "links": 0, "flagFound": 1, "flagFixed": 1, "qmap": "r"}]}, {"name": "Immunology", "files": [{"name": "Immunology 1", "q": 1, "ans": 1, "pages": 5, "imgFiles": 0, "imgUsed": 0, "tables": 0, "repaired": 1, "links": 1, "flagFound": 0, "flagFixed": 0, "qmap": "r"}]}, {"name": "Infectious diseases", "files": [{"name": "Infectious disease 31-53", "q": 23, "ans": 23, "pages": 135, "imgFiles": 11, "imgUsed": 8, "tables": 0, "repaired": 16, "links": 19, "flagFound": 10, "flagFixed": 10, "qmap": "ipirrirpirriipprriiprrr"}, {"name": "Infectious diseases 1-30", "q": 30, "ans": 30, "pages": 178, "imgFiles": 12, "imgUsed": 11, "tables": 0, "repaired": 21, "links": 23, "flagFound": 14, "flagFixed": 14, "qmap": "rirrirprrpirriprrrirrprpprprpr"}]}, {"name": "Neurology", "files": [{"name": "Neuro 1-33", "q": 33, "ans": 33, "pages": 156, "imgFiles": 10, "imgUsed": 9, "tables": 0, "repaired": 22, "links": 24, "flagFound": 24, "flagFixed": 24, "qmap": "pririrrrrrpprrprrrppprprrirprrrri"}, {"name": "Neuro 34-45", "q": 12, "ans": 12, "pages": 87, "imgFiles": 8, "imgUsed": 4, "tables": 1, "repaired": 10, "links": 5, "flagFound": 8, "flagFixed": 8, "qmap": "rprirrrrtrrp"}, {"name": "Neuro 46-85", "q": 40, "ans": 40, "pages": 207, "imgFiles": 24, "imgUsed": 21, "tables": 0, "repaired": 28, "links": 35, "flagFound": 21, "flagFixed": 21, "qmap": "prirririrpiiprrrpiipipriiprrrprprirrprrr"}]}, {"name": "Nutrition - Metabolism", "files": [{"name": "Nutrition _ Metabolism 1-9", "q": 9, "ans": 9, "pages": 54, "imgFiles": 5, "imgUsed": 5, "tables": 0, "repaired": 7, "links": 8, "flagFound": 6, "flagFixed": 6, "qmap": "prirrrpri"}]}, {"name": "Obstetrics", "files": [{"name": "Obs 1-30", "q": 29, "ans": 29, "pages": 150, "imgFiles": 2, "imgUsed": 2, "tables": 0, "repaired": 18, "links": 25, "flagFound": 17, "flagFixed": 17, "qmap": "rprrprrppprrrprrpppirrrrrpprr"}, {"name": "Obs 101-130", "q": 30, "ans": 30, "pages": 127, "imgFiles": 3, "imgUsed": 3, "tables": 0, "repaired": 9, "links": 26, "flagFound": 16, "flagFixed": 16, "qmap": "ppprppppprrpiprrpppppprprpprpp"}, {"name": "Obs 131-169", "q": 30, "ans": 30, "pages": 156, "imgFiles": 0, "imgUsed": 0, "tables": 0, "repaired": 20, "links": 27, "flagFound": 16, "flagFixed": 16, "qmap": "rprrppprrrrrprprrrprrrrprrrprp"}, {"name": "Obs 31-60", "q": 30, "ans": 30, "pages": 141, "imgFiles": 6, "imgUsed": 2, "tables": 0, "repaired": 17, "links": 26, "flagFound": 14, "flagFixed": 14, "qmap": "rrirrprpiprprpprrprprrprpprrrp"}, {"name": "Obs 61-100", "q": 40, "ans": 40, "pages": 187, "imgFiles": 7, "imgUsed": 7, "tables": 0, "repaired": 21, "links": 35, "flagFound": 19, "flagFixed": 19, "qmap": "prprrrpprpppprripprrpprrpriiprrprrrppprp"}]}, {"name": "Oncology", "files": [{"name": "Oncology 1-8", "q": 8, "ans": 8, "pages": 36, "imgFiles": 0, "imgUsed": 0, "tables": 0, "repaired": 4, "links": 4, "flagFound": 4, "flagFixed": 4, "qmap": "prprrprp"}]}, {"name": "Ophthalmology - ENT", "files": [{"name": "OPTHA _ ENT 1-38", "q": 38, "ans": 38, "pages": 198, "imgFiles": 20, "imgUsed": 19, "tables": 0, "repaired": 18, "links": 35, "flagFound": 16, "flagFixed": 16, "qmap": "ipppriiripppiiripripprirriirpripiiiipi"}]}, {"name": "Orthopaedic - Rheumatology", "files": [{"name": "Orthopaedic 1-30", "q": 29, "ans": 29, "pages": 158, "imgFiles": 12, "imgUsed": 11, "tables": 0, "repaired": 15, "links": 25, "flagFound": 15, "flagFixed": 15, "qmap": "rpripirpppiippiriirirrrpiprri"}, {"name": "Orthopaedic 31-68", "q": 38, "ans": 38, "pages": 215, "imgFiles": 9, "imgUsed": 9, "tables": 0, "repaired": 26, "links": 33, "flagFound": 24, "flagFixed": 24, "qmap": "prrrrrirpipipirrrrprrprpriirirpirrrrri"}]}, {"name": "Pediatric", "files": [{"name": "Pediatric 1-40", "q": 40, "ans": 40, "pages": 215, "imgFiles": 8, "imgUsed": 7, "tables": 0, "repaired": 26, "links": 31, "flagFound": 16, "flagFixed": 16, "qmap": "ppiirrrrripppppprprrripprrrrrirprrprrirr"}, {"name": "Pediatric 41-80", "q": 40, "ans": 40, "pages": 205, "imgFiles": 6, "imgUsed": 5, "tables": 0, "repaired": 29, "links": 35, "flagFound": 29, "flagFixed": 29, "qmap": "prpiprrrrrrrrripiirirpprrprrrrpprrprrrpr"}, {"name": "Pediatric 81-116", "q": 35, "ans": 35, "pages": 190, "imgFiles": 2, "imgUsed": 2, "tables": 0, "repaired": 21, "links": 29, "flagFound": 22, "flagFixed": 22, "qmap": "rprpprrrrrrrpipprpprrprrrrrrprrpppp"}]}, {"name": "Pharmacology", "files": [{"name": "Pharmacology 1-33", "q": 33, "ans": 33, "pages": 159, "imgFiles": 0, "imgUsed": 0, "tables": 0, "repaired": 20, "links": 26, "flagFound": 16, "flagFixed": 16, "qmap": "pprpprrprprpprrrrprpprrprrrrprrrr"}]}, {"name": "Psychiatry", "files": [{"name": "Psychiatry 1-35", "q": 35, "ans": 35, "pages": 163, "imgFiles": 1, "imgUsed": 1, "tables": 0, "repaired": 22, "links": 28, "flagFound": 28, "flagFixed": 28, "qmap": "rrprrprrprpprrirppprrrrrrrpprpprrrp"}, {"name": "Psychiatry 36-71", "q": 36, "ans": 36, "pages": 179, "imgFiles": 1, "imgUsed": 0, "tables": 0, "repaired": 27, "links": 31, "flagFound": 21, "flagFixed": 21, "qmap": "rppprrrrrrpprrrrprrprprrrrrrrprrrrrr"}, {"name": "Psychiatry 72-109", "q": 32, "ans": 32, "pages": 158, "imgFiles": 1, "imgUsed": 1, "tables": 0, "repaired": 21, "links": 28, "flagFound": 18, "flagFixed": 18, "qmap": "rrrrprrprrpprrrrprrrpirrppprprpr"}]}, {"name": "Public health", "files": [{"name": "Public health 1-30", "q": 30, "ans": 30, "pages": 139, "imgFiles": 6, "imgUsed": 6, "tables": 1, "repaired": 14, "links": 26, "flagFound": 14, "flagFixed": 14, "qmap": "prpprrrrpprirtpppprprrrprprppp"}, {"name": "Public health 31-60", "q": 30, "ans": 30, "pages": 156, "imgFiles": 2, "imgUsed": 2, "tables": 1, "repaired": 15, "links": 24, "flagFound": 13, "flagFixed": 13, "qmap": "rppppriprprtprrrppprrprrprrrpp"}, {"name": "Public health 61-95", "q": 35, "ans": 35, "pages": 204, "imgFiles": 2, "imgUsed": 2, "tables": 2, "repaired": 26, "links": 30, "flagFound": 17, "flagFixed": 17, "qmap": "rpprrrrrprrrrpprprrrrrrpprtprrrtrrr"}]}, {"name": "Respiratory", "files": [{"name": "Respiratory 1-30", "q": 30, "ans": 30, "pages": 158, "imgFiles": 5, "imgUsed": 4, "tables": 0, "repaired": 15, "links": 23, "flagFound": 16, "flagFixed": 16, "qmap": "pprrppppprprppprrrrprprrpirirr"}, {"name": "Respiratory 31-70", "q": 40, "ans": 40, "pages": 193, "imgFiles": 6, "imgUsed": 4, "tables": 0, "repaired": 20, "links": 34, "flagFound": 22, "flagFixed": 22, "qmap": "prpppiprrprrpripppprriirpprprrrrpprprrpr"}]}, {"name": "Urology - Neurology", "files": [{"name": "Urology _ Neurology 1-40", "q": 40, "ans": 40, "pages": 195, "imgFiles": 1, "imgUsed": 1, "tables": 0, "repaired": 24, "links": 27, "flagFound": 27, "flagFixed": 27, "qmap": "rrprrrprrrrirrrprrrprpppprprprrppprppprr"}]}, {"name": "Dermatology", "files": [{"name": "DERMATOLOGY 1-60", "q": 60, "ans": 60, "pages": 310, "imgFiles": 61, "imgUsed": 58, "tables": 0, "repaired": 43, "links": 50, "flagFound": 34, "flagFixed": 34, "qmap": "ipiripiirirrpriiipriirripiiiiiiririiirirrirpiiiiiirpirriiiip"}]}, {"name": "Emergency Medicine", "files": [{"name": "Emergency Medicine 1", "q": 45, "ans": 45, "pages": 277, "imgFiles": 11, "imgUsed": 11, "tables": 0, "repaired": 34, "links": 40, "flagFound": 30, "flagFixed": 30, "qmap": "riirirrprrpirrrirprpirirrrrrrprrrrrprrprrprpp"}, {"name": "Emergency Medicine 2 Total 55 question", "q": 10, "ans": 10, "pages": 62, "imgFiles": 0, "imgUsed": 0, "tables": 0, "repaired": 7, "links": 10, "flagFound": 7, "flagFixed": 7, "qmap": "rrprrprprr"}]}, {"name": "Endocrinology & Breast", "files": [{"name": "Endo_ breast 1-50", "q": 49, "ans": 49, "pages": 273, "imgFiles": 7, "imgUsed": 7, "tables": 2, "repaired": 34, "links": 41, "flagFound": 27, "flagFixed": 27, "qmap": "piprrrprprprpirrrpprrrrirrrpirrrprtritprrrrrrprpp"}]}], "pass2026": [{"name": "1-Cardiology", "parsed": 636, "total": 636, "qaLeft": 0, "qaTotal": 11, "status": "clean"}, {"name": "2-Dermatology", "parsed": 257, "total": 257, "qaLeft": 0, "qaTotal": 32, "status": "clean"}, {"name": "3-Nephrology", "parsed": 274, "total": 274, "qaLeft": 0, "qaTotal": 18, "status": "clean"}, {"name": "4-Infection", "parsed": 567, "total": 567, "qaLeft": 0, "qaTotal": 79, "status": "clean"}, {"name": "5-Hematology", "parsed": 419, "total": 419, "qaLeft": 0, "qaTotal": 57, "status": "clean"}, {"name": "6-GIT", "parsed": 413, "total": 413, "qaLeft": 0, "qaTotal": 56, "status": "clean"}, {"name": "7-Endocrinology", "parsed": 420, "total": 420, "qaLeft": 0, "qaTotal": 0, "status": "clean"}, {"name": "8-Neurology", "parsed": 531, "total": 531, "qaLeft": 0, "qaTotal": 47, "status": "clean"}, {"name": "9-Palliative Care", "parsed": 40, "total": 40, "qaLeft": 0, "qaTotal": 0, "status": "clean"}, {"name": "10-Geriatrics", "parsed": 41, "total": 41, "qaLeft": 0, "qaTotal": 2, "status": "clean"}, {"name": "11-Rheumatology", "parsed": 357, "total": 357, "qaLeft": 0, "qaTotal": 27, "status": "clean"}, {"name": "12-Respiratory", "parsed": 264, "total": 264, "qaLeft": 0, "qaTotal": 46, "status": "clean"}, {"name": "13-Psychiatry", "parsed": 128, "total": 128, "qaLeft": 0, "qaTotal": 12, "status": "clean"}, {"name": "14-Clinical Sciences", "parsed": 561, "total": 561, "qaLeft": 0, "qaTotal": 58, "status": "clean"}, {"name": "15-Ophthalmology", "parsed": 101, "total": 101, "qaLeft": 0, "qaTotal": 8, "status": "clean"}, {"name": "16-Pharmacology", "parsed": 318, "total": 318, "qaLeft": 0, "qaTotal": 0, "status": "clean"}]};
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const n=x=>Number(x).toLocaleString("en-US");
-const pct=(a,b)=>b?Math.min(100,a/b*100):0;
-const meter=(a,b,cls)=>`<div class="meter ${cls||""}"><i style="width:${pct(a,b).toFixed(1)}%"></i></div>`;
-const T=D.totals, subs=D.subjects;
-const sum=(arr,f)=>arr.reduce((s,x)=>s+f(x),0);
-const sub=(s,k)=>sum(s.files,f=>f[k]);
+const LS=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k)||"";localStorage.setItem(k,v)}catch(e){return""}};
+const api=()=>{const u=(LS("drh-hub")||"").trim().replace(/\/+$/,"");return (u?u:".")+"/api.php"};
+const tok=()=>LS("drh-tok");
+const call=async(a,params,opt)=>{
+  const q=new URLSearchParams(Object.assign({a},params||{}));
+  try{
+    const r=await fetch(api()+"?"+q,Object.assign({headers:{"X-Token":tok()}},opt||{}));
+    const j=await r.json().catch(()=>({ok:false,error:"jawab samajh nahi aaya"}));
+    if(!r.ok&&!j.error)j.error="server "+r.status;return j;
+  }catch(e){return{ok:false,error:"network error"}}
+};
+const sz=b=>b>=1e9?(b/1e9).toFixed(1)+" GB":b>=1e6?(b/1e6).toFixed(1)+" MB":Math.max(1,Math.round(b/1e3))+" KB";
+const ago=s=>{s=Math.max(0,Math.round(s));return s<60?s+" sec":s<3600?Math.round(s/60)+" min":(s/3600).toFixed(1)+" ghante"};
+const meter=(p,cls)=>`<div class="meter ${cls||""}"><i style="width:${Math.max(0,Math.min(100,p)).toFixed(1)}%"></i></div>`;
+const setPill=(el,cls,txt)=>{el.className="pill "+cls;el.innerHTML="<i></i>"+esc(txt)};
 
-// nav
-const SEC=[["parse","Upload & Parse"],["outs","Outputs"],["overview","Qbank Overview"],["qbank","QBank"],["progress","Progress"],["flagged","Flagged"],["screening","Screening"],["fixes","Fixing"],["images","Images"],["pass","Pass 2026"],["downloads","Downloads"]];
-const OLD=["overview","qbank","progress","flagged","screening","fixes","images","pass","downloads"];
-let oldOn=false;try{oldOn=localStorage.getItem("drh-old")==="1"}catch(e){}
-function applyOld(){OLD.forEach(id=>{const s=$(id);if(s)s.hidden=!oldOn});document.querySelectorAll('#nav a').forEach(a=>{if(OLD.includes(a.dataset.s))a.hidden=!oldOn});const b=$("oldBtn");if(b)b.textContent=oldOn?"Purana record chhupao":"Purana record (qbank)"}
-$("nav").innerHTML=SEC.map(([id,t])=>`<a href="#${id}" data-s="${id}">${t}</a>`).join("")+'<a href="#" id="oldBtn" style="font-weight:700"></a>';
-$("oldBtn").onclick=e=>{e.preventDefault();oldOn=!oldOn;try{localStorage.setItem("drh-old",oldOn?"1":"0")}catch(x){}applyOld();if(oldOn)$("overview").scrollIntoView()};
-applyOld();
-const links=[...document.querySelectorAll("#nav a")];
-if("IntersectionObserver" in window){const io=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){links.forEach(l=>l.classList.toggle("on",l.dataset.s===e.target.id))}})},{rootMargin:"-30% 0px -60% 0px"});SEC.forEach(([id])=>io.observe($(id)))}
+let timer=null,uploading=null,lastState=null;
+$("hubUrl").value=LS("drh-hub");$("hubTok").value=tok();
+$("hubUrl").onchange=()=>{LS("drh-hub",$("hubUrl").value);boot()};
+$("hubTok").onchange=()=>{LS("drh-tok",$("hubTok").value);boot()};
 
-// overview
-$("ovLead").textContent=`${T.pdfs} PDFs, ${T.q.toLocaleString()} sawal, ${T.flagFound} flags: sab band`;
-$("tiles").innerHTML=[
- [T.pdfs,"PDFs parse hui",""],[T.subjects,"subjects",""],[n(T.q),"sawal (sab ke jawab set)","ok"],[n(T.pages),"screenshots OCR hue",""],
- [`${T.flagFixed}/${T.flagFound}`,"flags band, 0 baqi","ok"],[n(T.imgUsed),"tasveerein sawalon mein",""],[T.tables,"tables saaf tasveer bane",""],[D.removed,"adhoore sawal hataye",""]
-].map(([v,l,c])=>`<div class="card tile ${c}"><b>${v}</b><span>${l}</span></div>`).join("");
+async function boot(){
+  clearInterval(timer);
+  let j;
+  j=await call("ping");
+  if(!j.ok){setPill($("hubState"),"bad","hub nahi mila: Hub settings mein URL daalo");return}
+  if(!j.auth){setPill($("hubState"),"warn","hub mila, token chahiye (Hub settings)");return}
+  setPill($("hubState"),"ok","hub judi hui");
+  poll();timer=setInterval(()=>{if(!document.hidden)poll()},3000);
+}
 
-// qbank
-function fileHTML(f){
-  const cells=[...f.qmap].map((c,i)=>`<i class="${c==="p"?"":c}" title="Q${i+1}"></i>`).join("");
-  return `<div class="file" data-k="${esc(f.name.toLowerCase())}"><h4>${esc(f.name)}</h4>
-  <div class="chips"><span class="pill">${f.q} sawal</span><span class="pill">${n(f.pages)} screenshots</span>
-  <span class="pill ${f.flagFound&&f.flagFound===f.flagFixed?"ok":""}">flags ${f.flagFixed}/${f.flagFound}</span>
-  <span class="pill">${f.repaired} fix hue</span>${f.tables?`<span class="pill">${f.tables} table tasveer</span>`:""}${f.imgUsed?`<span class="pill">${f.imgUsed} tasveer</span>`:""}</div>
-  <div class="fm"><label>OCR</label>${meter(f.pages,f.pages,"ok")}<span class="v">${n(f.pages)}/${n(f.pages)}</span></div>
-  <div class="fm"><label>Jawab</label>${meter(f.ans,f.q,f.ans===f.q?"ok":"")}<span class="v">${f.ans}/${f.q}</span></div>
-  <div class="fm"><label>Flags</label>${meter(f.flagFixed,f.flagFound||1,"ok")}<span class="v">${f.flagFixed}/${f.flagFound}</span></div>
-  <div class="cells">${cells}</div></div>`}
-function drawSubjects(){
-  const q=$("q").value.trim().toLowerCase();
-  let h="";
-  subs.forEach(s=>{
-    const fs=s.files.filter(f=>!q||f.name.toLowerCase().includes(q)||s.name.toLowerCase().includes(q));
-    if(!fs.length)return;
-    h+=`<details class="sub-acc" ${q?"open":""}><summary><b>${esc(s.name)}</b><span class="pill">${fs.length} file</span><span class="pill">${sum(fs,f=>f.q)} sawal</span><span class="pill ok">flags ${sum(fs,f=>f.flagFixed)}/${sum(fs,f=>f.flagFound)}</span></summary><div class="fgrid">${fs.map(fileHTML).join("")}</div></details>`});
-  $("subjects").innerHTML=h||'<p class="sub">Koi file nahi mili.</p>'}
-$("q").addEventListener("input",drawSubjects);drawSubjects();
+function pickCurrent(jobs){
+  const by=(st)=>jobs.filter(j=>j.status===st);
+  const run=by("running").sort((a,b)=>(b.updated||0)-(a.updated||0))[0];
+  if(run)return run;
+  const q=by("queued").sort((a,b)=>(a.created||0)-(b.created||0))[0];
+  if(q)return q;
+  return [...jobs].sort((a,b)=>(b.updated||0)-(a.updated||0))[0]||null;
+}
 
-// progress
-const M=[["OCR: screenshots padhe",T.pages,T.pages],["Parse: sawal bane",T.q,T.q],["Jawab set",T.ans,T.q],["PDF se screening",T.q,T.q],["Flags band",T.flagFixed,T.flagFound],["Tasveerein sawalon mein",T.imgUsed,T.imgFiles]];
-$("meters").innerHTML=M.map(([t,a,b])=>`<div class="row"><span class="n">${t}</span>${meter(a,b,a===b?"ok":"")}<span class="v">${n(a)} / ${n(b)}</span></div>`).join("");
-const maxQ=Math.max(...subs.map(s=>sub(s,"q")));
-$("bySubject").innerHTML=[...subs].sort((a,b)=>sub(b,"q")-sub(a,"q")).map(s=>`<div class="row"><span class="n">${esc(s.name)}</span>${meter(sub(s,"q"),maxQ)}<span class="v">${sub(s,"q")} sawal</span></div>`).join("");
+function render(j,state){
+  if(uploading){$("cur").innerHTML=uploading;return}
+  if(!j){$("cur").innerHTML='<p class="empty">Abhi koi file nahi. Upar PDF chhodo.</p>';return}
+  const now=state.now||Math.round(Date.now()/1000);
+  const queued=state.jobs.filter(x=>x.status==="queued"&&x.id!==j.id).length;
+  const p=+j.pct||0, cls=j.status==="done"?"ok":j.status==="failed"?"bad":"";
+  const steps=(j.jobs||[]).filter(x=>+x.total).map(x=>{
+    const pc=(+x.done)/(+x.total)*100;
+    return `<div class="step"><span>${esc(x.label)}</span><span class="v">${n(x.done)}/${n(x.total)}${x.unit?" "+esc(x.unit):""}</span>${meter(pc,x.state==="ok"?"ok":"")}</div>`}).join("");
+  const a=[];
+  if(j.status==="done")a.push(`<a class="pri" href="${api()}?a=download&id=${encodeURIComponent(j.id)}&token=${encodeURIComponent(tok())}">Result zip download (${sz(j.result||0)})</a>`);
+  if(j.status==="failed")a.push(`<button class="pri" data-rq="${esc(j.id)}">Dobara try</button><button data-copy="1">Error copy</button>`);
+  a.push(`<button class="dng" data-del="${esc(j.id)}">Hatao</button>`);
+  const stage=j.status==="failed"?"parsing fail hui":(j.stage||"");
+  $("cur").innerHTML=
+    `<div class="t"><b>${esc(j.name)}</b><span class="st ${esc(j.status)}">${esc(j.status)}</span></div>
+     <div class="meta"><span>${sz(j.size||0)}</span>${j.worker?`<span>worker: ${esc(j.worker)}</span>`:""}<span>shuru: ${ago(now-(j.created||now))} pehle</span>${j.status==="running"?`<span>update: ${ago(now-(j.updated||now))} pehle</span>`:""}</div>
+     <div class="big"><b>${p.toFixed(p<10?1:0)}%</b><span>${esc(stage)}</span></div>${meter(p,cls)}
+     ${steps?`<div class="steps">${steps}</div>`:""}
+     ${j.detail&&j.status!=="failed"?`<div class="detail">${esc(j.detail)}</div>`:""}
+     ${j.status==="failed"?`<div class="err" id="errTxt">${esc(j.stage||"")}</div>`:""}
+     ${queued?`<p class="note">${queued} aur file line mein hai</p>`:""}
+     <div class="acts">${a.join("")}</div>`;
+}
 
-// flagged
-$("flBig").textContent=`${T.flagFixed}/${T.flagFound}`;
-$("flSub").textContent=`flags band · ${T.flagFound-T.flagFixed} baqi. Yani jitne sawal shak mein mile the, sab ya theek hue ya hata diye gaye.`;
-$("flRows").innerHTML=[...subs].filter(s=>sub(s,"flagFound")).sort((a,b)=>sub(b,"flagFound")-sub(a,"flagFound")).map(s=>{const f=sub(s,"flagFound"),x=sub(s,"flagFixed");
- return `<tr><td>${esc(s.name)}</td><td class="num">${f}</td><td class="num">${x}</td><td class="num">${f-x}</td><td>${meter(x,f,"ok")}</td></tr>`}).join("");
+async function poll(){
+  const j=await call("state");
+  if(!j.ok){setPill($("hubState"),"bad",j.error||"hub error");return}
+  lastState=j;
+  render(pickCurrent(j.jobs),j);
+  const w=j.workers.filter(x=>x.ago<60);
+  w.length?setPill($("wkState"),"ok","worker online: "+w.map(x=>x.name).join(", ")):setPill($("wkState"),"warn","worker offline (Colab/VPS par worker chalao)");
+  $("cmds").textContent=j.cmds.map(c=>`[${new Date(c.ts).toTimeString().slice(0,8)}] ${c.text}`).join("\n");
+}
 
-// screening
-$("scList").innerHTML=[`${n(T.q)} sawalon ke jawab PDF ke tick / explanation se mile`,`${n(T.pages)} screenshots ka OCR text sawalon se milaya gaya`,`Har table, tasveer aur link ko source screenshot se dekha`,`Dobara aane wale (duplicate) sawal aur "Font Size" jaisa kachra pakda gaya`,`Kati hui lines aur chat-bubble ke neeche ka text alag se jaancha`].map(x=>`<li>${x}</li>`).join("");
-$("scDecide").innerHTML=[`Jo text source mein hi nahi tha, usse andaze se nahi bhara`,`${D.removed} sawal jinka shuru chhupa tha, hata kar numbering bina gap ke ki`,`Dermatology ke 2 aakhri jumle aur Urology ki ek age (45), aapke kehne par jode gaye`,`Ek kata hua reference URL hata diya`,`Options ke end ke "." hataye (${n(D.optionDots)} options)`].map(x=>`<li>${x}</li>`).join("");
+document.addEventListener("click",async e=>{
+  const b=e.target.closest("button");if(!b)return;
+  if(b.dataset.del){await call("delete",{id:b.dataset.del});poll()}
+  if(b.dataset.rq){await call("requeue",{id:b.dataset.rq});poll()}
+  if(b.dataset.copy){const t=($("errTxt")||{}).textContent||"";try{await navigator.clipboard.writeText(t);b.textContent="Copy ho gaya"}catch(x){b.textContent="Copy nahi hua"}}
+});
 
-// fixes
-const mx=Math.max(...D.fixes.map(f=>f.n));
-$("fixRows").innerHTML=D.fixes.map(f=>`<div class="row"><span class="n">${esc(f.name)}</span>${meter(f.n,mx)}<span class="v">${n(f.n)}</span></div>`).join("");
-$("fixTiles").innerHTML=[[T.tables,"tables ki saaf tasveer"],[D.removed,"sawal hataye"],[n(D.optionDots),"options se dot hata"],[T.repaired,"sawalon mein koi fix"]].map(([v,l])=>`<div class="card tile"><b>${v}</b><span>${l}</span></div>`).join("");
-
-// images
-const mi=Math.max(...subs.map(s=>sub(s,"imgFiles")));
-$("imgRows").innerHTML=`<div class="row"><span class="n"><b>Kul</b></span>${meter(T.imgUsed,T.imgFiles)}<span class="v">${T.imgUsed} / ${T.imgFiles} istemal</span></div>`+[...subs].filter(s=>sub(s,"imgFiles")).sort((a,b)=>sub(b,"imgFiles")-sub(a,"imgFiles")).map(s=>`<div class="row"><span class="n">${esc(s.name)}</span>${meter(sub(s,"imgFiles"),mi)}<span class="v">${sub(s,"imgFiles")} files</span></div>`).join("");
-
-// pass 2026
-$("p26").innerHTML=D.pass2026.map(p=>`<div class="card"><b>${esc((p.name||"").replace(/^\d+-/,""))}</b>${meter(p.parsed,p.total,"ok")}<div class="chips" style="margin:8px 0 0"><span class="pill">${n(p.parsed)}/${n(p.total)}</span><span class="pill ${p.qaLeft===0?"ok":""}">QA ${p.qaTotal-p.qaLeft}/${p.qaTotal}</span></div></div>`).join("");
-
-// downloads
-$("dl").innerHTML=[["viewer.html","QBank viewer","JSON aur images load karke sawal practice karo"],["amedex_all.json","Combined JSON","Sab 22 systems ek file mein, website ke liye"],["subjects/","Subject-wise JSON","Har system ki alag file"],["images/","Images folder","JSON mein jin tasveeron ka zikr hai"],["AMEDEX_REPORT.md","Poori report","Counts aur known limits"]].map(([h,t,d])=>`<a class="card dl" href="${h}"><b>${t}</b><span>${h} — ${d}</span></a>`).join("");
-$("gen").textContent=D.generated;
-
-// hero stats
-$("heroStats").innerHTML=[`${T.pdfs} PDFs`,`${n(T.q)} sawal`,`${T.flagFixed}/${T.flagFound} flags band`,`${n(T.imgUsed)} tasveerein`].map(x=>`<span>${x}</span>`).join("");
-
-// ---- hub mode: upload PDFs, worker parses elsewhere, progress shown here ----
-(function(){
-  if(!/^https?:$/.test(location.protocol))return;
-  const LS=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k)||"";localStorage.setItem(k,v)}catch(e){return""}};
-  const api=()=>{const u=(LS("drh-hub")||"").trim().replace(/\/+$/,"");return (u?u:".")+"/api.php"};
-  const tok=()=>LS("drh-tok");
-  const hdr=()=>({"X-Token":tok()});
-  const call=async(a,params,opt)=>{const q=new URLSearchParams(Object.assign({a},params||{}));const r=await fetch(api()+"?"+q,Object.assign({headers:hdr()},opt||{}));const j=await r.json().catch(()=>({ok:false,error:"jawab samajh nahi aaya"}));if(!r.ok&&!j.error)j.error="server "+r.status;return j};
-  $("hubUrl").value=LS("drh-hub");$("hubTok").value=tok();
-  $("hubUrl").onchange=()=>{LS("drh-hub",$("hubUrl").value);boot()};$("hubTok").onchange=()=>{LS("drh-tok",$("hubTok").value);boot()};
-  let alive=false,timer=null;
-  const sz=b=>b>1e9?(b/1e9).toFixed(1)+" GB":(b/1e6).toFixed(1)+" MB";
-  async function boot(){
-    clearInterval(timer);alive=false;
-    try{const p=await fetch(api()+"?a=ping");const j=await p.json();if(!j.ok)throw 0;alive=true;$("parse").hidden=false;
-      if(!document.querySelector('#nav a[data-s="parse"]'))nav();
-      $("hubState").textContent=j.auth?"hub: judi hui":"hub mila, token chahiye";
-      if(j.auth){poll();timer=setInterval(poll,3000)}}
-    catch(e){$("hubState").textContent="hub nahi mila: Hub settings mein URL daalo (ya Hostinger par lab folder upload karo)"}
-  }
-  function nav(){}
-  const jobCard=j=>{
-    const subs=(j.jobs||[]).filter(x=>+x.total).map(x=>`<div class="sub"><span>${esc(x.label)}</span>${meter(+x.done,+x.total,x.state==="ok"?"ok":"")}<span class="v">${n(x.done)}/${n(x.total)}</span></div>`).join("");
-    const a=[];
-    if(j.status==="done")a.push(`<a href="${api()}?a=download&id=${encodeURIComponent(j.id)}&token=${encodeURIComponent(tok())}">Result zip download (${sz(j.result||0)})</a>`);
-    if(j.status==="failed")a.push(`<button data-rq="${esc(j.id)}">Dobara try</button>`);
-    a.push(`<button data-del="${esc(j.id)}">Hatao</button>`);
-    return `<div class="pj"><div class="t"><b>${esc(j.name)}</b><span class="st ${esc(j.status)}">${esc(j.status)}</span></div><small>${sz(j.size||0)} · ${esc(j.stage||"")}${j.worker?" · "+esc(j.worker):""}</small>${meter(+j.pct||0,100,j.status==="done"?"ok":"")}${subs}<div class="acts">${a.join("")}</div></div>`};
-  async function poll(){
-    const j=await call("state");if(!j.ok){$("hubState").textContent=j.error||"hub error";return}
-    $("pjobs").innerHTML=j.jobs.length?j.jobs.map(jobCard).join(""):'<p class="sub">Abhi koi file nahi. Upar PDF chhodo.</p>';
-    const w=j.workers.filter(x=>x.ago<60);$("wkState").textContent=w.length?"worker online: "+w.map(x=>x.name).join(", "):"worker offline (Colab/VPS par worker chalao)";
-    $("hcmds").innerHTML=j.cmds.map(c=>`<span class="t">[${new Date(c.ts).toTimeString().slice(0,8)}]</span> ${esc(c.text)}`).join("\n");
-  }
-  document.addEventListener("click",async e=>{const b=e.target.closest("button");if(!b)return;
-    if(b.dataset.del){await call("delete",{id:b.dataset.del});poll()}
-    if(b.dataset.rq){await call("requeue",{id:b.dataset.rq});poll()}});
-  // chunked upload
-  const CH=4*1024*1024;
-  async function up(f){
-    const id=Date.now().toString(36)+Math.random().toString(36).slice(2,8),total=Math.max(1,Math.ceil(f.size/CH));
-    const card=document.createElement("div");card.className="pj";card.innerHTML=`<div class="t"><b>${esc(f.name)}</b><span class="st">upload</span></div><small id="u${id}">0%</small>${meter(0,1)}`;$("pjobs").prepend(card);
-    for(let i=0;i<total;i++){
-      let ok=false,err="";
-      for(let t=0;t<4&&!ok;t++){
-        const q=new URLSearchParams({a:"upload",id,name:f.name,idx:i,total,size:f.size});
-        try{const r=await fetch(api()+"?"+q,{method:"POST",headers:hdr(),body:f.slice(i*CH,(i+1)*CH)});const j=await r.json();if(j.ok)ok=true;else err=j.error||"error"}catch(e){err="network"}
-        if(!ok)await new Promise(r=>setTimeout(r,1500*(t+1)));
-      }
-      if(!ok){card.querySelector(".st").textContent="fail";card.querySelector("small").textContent="upload nahi hui: "+err;return}
-      const p=(i+1)/total*100;card.querySelector("small").textContent=p.toFixed(0)+"% upload";card.querySelector(".meter i").style.width=p+"%";
+// chunked upload
+const CH=4*1024*1024;
+async function up(f){
+  const id=Date.now().toString(36)+Math.random().toString(36).slice(2,8),total=Math.max(1,Math.ceil(f.size/CH));
+  const show=(pct,msg,bad)=>{uploading=`<div class="t"><b>${esc(f.name)}</b><span class="st ${bad?"failed":""}">${bad?"fail":"upload"}</span></div>
+    <div class="meta"><span>${sz(f.size)}</span></div><div class="big"><b>${pct.toFixed(0)}%</b><span>${esc(msg)}</span></div>${meter(pct,bad?"bad":"")}`;$("cur").innerHTML=uploading};
+  show(0,"upload shuru");
+  for(let i=0;i<total;i++){
+    let ok=false,err="";
+    for(let t=0;t<4&&!ok;t++){
+      const q=new URLSearchParams({a:"upload",id,name:f.name,idx:i,total,size:f.size});
+      try{const r=await fetch(api()+"?"+q,{method:"POST",headers:{"X-Token":tok()},body:f.slice(i*CH,(i+1)*CH)});const j=await r.json();if(j.ok)ok=true;else err=j.error||"error"}catch(e){err="network"}
+      if(!ok)await new Promise(r=>setTimeout(r,1500*(t+1)));
     }
-    card.querySelector(".st").textContent="queue";poll();
+    if(!ok){show(i/total*100,"upload nahi hui: "+err,true);setTimeout(()=>{uploading=null;poll()},6000);return}
+    show((i+1)/total*100,"upload ho rahi hai");
   }
-  const files=fs=>{[...fs].filter(f=>/\.(pdf|html?|mhtml?|mht)$/i.test(f.name)).reduce((p,f)=>p.then(()=>up(f)),Promise.resolve())};
-  $("drop").onclick=()=>$("pfile").click();$("pfile").onchange=e=>{files(e.target.files);e.target.value=""};
-  $("drop").ondragover=e=>{e.preventDefault();$("drop").classList.add("on")};$("drop").ondragleave=()=>$("drop").classList.remove("on");
-  $("drop").ondrop=e=>{e.preventDefault();$("drop").classList.remove("on");files(e.dataTransfer.files)};
-  $("hcmdForm").addEventListener("submit",async ev=>{ev.preventDefault();const t=$("hcmdIn").value.trim();if(!t)return;
-    const j=await call("cmd",{},{method:"POST",body:JSON.stringify({text:t,by:"web"})});if(j.ok){$("hcmdIn").value="";poll()}});
-  boot();
-})();
+  uploading=null;poll();
+}
+const files=fs=>{[...fs].filter(f=>/\.(pdf|html?|mhtml?|mht)$/i.test(f.name)).reduce((p,f)=>p.then(()=>up(f)),Promise.resolve())};
+$("drop").onclick=()=>$("pfile").click();
+$("drop").onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("pfile").click()}};
+$("pfile").onchange=e=>{files(e.target.files);e.target.value=""};
+$("drop").ondragover=e=>{e.preventDefault();$("drop").classList.add("on")};
+$("drop").ondragleave=()=>$("drop").classList.remove("on");
+$("drop").ondrop=e=>{e.preventDefault();$("drop").classList.remove("on");files(e.dataTransfer.files)};
 
-// ---- generic outputs (local server /lab/outputs, or hub results) ----
-(function(){
-  const box=$("outList");
-  fetch("/lab/outputs").then(r=>r.json()).then(a=>{
-    box.innerHTML=a.length?a.map(r=>`<div class="card"><b>${esc(r.name)}</b><div class="chips" style="margin:8px 0">${r.files.map(f=>`<a class="pill" href="/lab/file/${encodeURIComponent(r.name)}/${encodeURIComponent(f)}">${esc(f)}</a>`).join("")}</div><pre style="max-height:220px;overflow:auto;white-space:pre-wrap">${esc(r.sample||"")}</pre></div>`).join(""):'<p class="sub">Abhi koi output nahi. PDF upload karo, parse hone par yahan save ho jayegi.</p>';
-  }).catch(()=>{box.innerHTML='<p class="sub">Outputs list sirf lab server (127.0.0.1:8787) par dikhti hai. Hosting par Upload &amp; Parse se result zip download hoti hai.</p>'});
-})();
+$("cmdForm").addEventListener("submit",async ev=>{
+  ev.preventDefault();const t=$("cmdIn").value.trim();if(!t)return;
+  const j=await call("cmd",{},{method:"POST",body:JSON.stringify({text:t,by:"web"})});
+  if(j.ok){$("cmdIn").value="";poll()}
+});
 
-// ---- live mode: only when this page is served by the lab server (has /stream) ----
-(function(){
-  if(!/^https?:$/.test(location.protocol)||!window.EventSource)return;
-  const tfmt=ts=>{try{return new Date(ts).toTimeString().slice(0,8)}catch(e){return""}};
-  let opened=false,es;
-  try{es=new EventSource("stream")}catch(e){return}
-  const setLive=on=>{$("livePill").classList.toggle("on",on);$("liveTxt").textContent=on?"LIVE":"offline"};
-  es.onopen=()=>{opened=true;setLive(true);$("live").hidden=false;
-    if(!document.querySelector('#nav a[data-s="live"]')){const a=document.createElement("a");a.href="#live";a.dataset.s="live";a.textContent="Live";$("nav").prepend(a)}};
-  es.onerror=()=>{if(!opened){es.close();return}setLive(false)};
-  es.addEventListener("jobs",e=>{const a=JSON.parse(e.data);
-    $("jobs").innerHTML=a.length?a.map(j=>{const tot=+j.total||0,dn=+j.done||0,cls=j.state==="run"?"run":j.state==="fail"?"fail":"";
-      return `<div class="job ${cls}"><div class="t"><span>${esc(j.label)}</span><em>${tot?n(dn)+" / "+n(tot)+" "+esc(j.unit||""):esc(j.state)}</em></div>${j.detail?`<small>${esc(j.detail)}</small>`:""}${tot?meter(dn,tot,j.state==="ok"?"ok":""):""}</div>`}).join(""):'<p class="sub" style="margin:0">Abhi koi kaam nahi chal raha.</p>'});
-  const feed=[];
-  es.addEventListener("notes",e=>{JSON.parse(e.data).forEach(x=>feed.push(x));while(feed.length>60)feed.shift();
-    const f=$("feed"),bot=f.scrollTop+f.clientHeight>=f.scrollHeight-8;
-    f.innerHTML=feed.map(x=>`<span class="t">[${tfmt(x.ts)}]</span> ${esc(x.text)}`).join("\n");if(bot)f.scrollTop=f.scrollHeight});
-  const cmds=[];
-  es.addEventListener("cmds",e=>{JSON.parse(e.data).forEach(x=>cmds.push(x));while(cmds.length>30)cmds.shift();
-    $("cmds").innerHTML=cmds.map(c=>`<span class="t">[${tfmt(c.ts)}]</span> ${esc(c.text)}${(c.images||[]).length?` <a href="uploads/${esc(c.images[0])}" target="_blank">img</a>`:""}`).join("\n")});
-  // command form (same server endpoints as the classic dashboard)
-  let pending=[];const say=(m,bad)=>{$("hint").textContent=m;$("hint").style.color=bad?"var(--bad)":""};
-  const EXT={jpg:"image/jpeg",jpeg:"image/jpeg",png:"image/png",webp:"image/webp",gif:"image/gif"};
-  const ftype=f=>{if((f.type||"").startsWith("image/"))return f.type;const m=/\.([a-z0-9]+)$/i.exec(f.name||"");return m&&EXT[m[1].toLowerCase()]||""};
-  const draw=()=>{$("thumbs").innerHTML="";pending.forEach(f=>{const i=document.createElement("img");i.src=URL.createObjectURL(f);$("thumbs").append(i)})};
-  $("attBtn").onclick=()=>$("fileIn").click();
-  $("fileIn").onchange=e=>{for(const f of e.target.files){const ty=ftype(f);if(!ty){say("ye image nahi lag rahi: "+(f.name||""),1);continue}if(pending.length>=6)break;f._ty=ty;pending.push(f)}e.target.value="";draw();if(pending.length)say(pending.length+" image tayyar")};
-  $("cmdForm").addEventListener("submit",async ev=>{ev.preventDefault();const t=$("cmdIn").value.trim();if(!t&&!pending.length)return;$("cmdBtn").disabled=true;
-    try{const images=[];for(const f of pending){const r=await fetch("upload",{method:"POST",headers:{"Content-Type":f._ty},body:f});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||"upload failed");images.push(j.name)}
-      const r=await fetch("cmd",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:t,images})});if(!r.ok)throw new Error("server "+r.status);
-      $("cmdIn").value="";pending=[];draw();say("Command chala gaya")}catch(x){say("send failed: "+(x.message||x),1)}finally{$("cmdBtn").disabled=false}});
-})();
+$("clearOld").onclick=async()=>{
+  if(!confirm("Purane finished results, commands aur purane worker records hata dun? Chalti ya fail hui file nahi hategi."))return;
+  const j=await call("clear");
+  alert(j.ok?`Saaf ho gaya: ${j.removed_jobs} purani file hatai`:"Nahi hua: "+(j.error||"error"));
+  poll();
+};
 
 // theme
 const root=document.documentElement;
 try{const t=localStorage.getItem("drh-theme");if(t)root.dataset.theme=t}catch(e){}
 $("theme").onclick=()=>{const dark=root.dataset.theme?root.dataset.theme==="dark":matchMedia("(prefers-color-scheme:dark)").matches;const nx=dark?"light":"dark";root.dataset.theme=nx;try{localStorage.setItem("drh-theme",nx)}catch(e){}};
+
+boot();
 </script>
 </body>
 </html>
