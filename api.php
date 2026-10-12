@@ -239,5 +239,20 @@ case 'final': {    // student_view.json from the result zip merged with the huma
         foreach ((array)($r['edit'] ?? []) as $k => $val) $q[$k] = $val; } unset($q);
     header('Content-Type: application/json; charset=utf-8'); header('Content-Disposition: attachment; filename="student_view_final.json"'); echo json_encode($v, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT); exit;
 }
+case 'setworker': { // bridge uploads the Claude-edited worker.zip; only whitelisted python/script names, backup kept, logged
+    $tmp = "$DATA/worker_upload.tmp"; $n = body_to($tmp); if ($n < 1000 || $n > 8 * 1048576) { @unlink($tmp); bad('zip size galat'); }
+    $z = new ZipArchive(); if ($z->open($tmp) !== true) { @unlink($tmp); bad('zip khula nahi'); }
+    $ok = '#^(worker\.py|run_lab\.py|m2\.py|html_parse\.py|doctor\.py|make_sample\.py|setup_linux\.sh|lab/[a-z_]+\.py)$#'; $have = [];
+    for ($i = 0; $i < $z->numFiles; $i++) { $nm = (string)$z->getNameIndex($i); if (substr($nm, -1) === '/') continue; if (!preg_match($ok, $nm)) { $z->close(); @unlink($tmp); bad('zip mein allowed na hone wali file: ' . $nm); } $have[$nm] = 1; }
+    $z->close(); foreach (['worker.py', 'm2.py', 'run_lab.py', 'lab/pipeline.py', 'lab/verify.py'] as $r) if (!isset($have[$r])) { @unlink($tmp); bad("zip mein $r nahi hai"); }
+    if (is_file("$DATA/worker_live.zip")) @copy("$DATA/worker_live.zip", "$DATA/worker_prev.zip");
+    rename($tmp, "$DATA/worker_live.zip");
+    @file_put_contents("$DATA/worker_uploads.log", date('c') . " $n bytes sha1=" . sha1_file("$DATA/worker_live.zip") . " files=" . count($have) . "\n", FILE_APPEND | LOCK_EX);
+    out(['ok' => true, 'bytes' => $n, 'files' => count($have)]);
+}
+case 'rollbackworker': { // go back to the previous worker zip (or the repo's original)
+    if (is_file("$DATA/worker_prev.zip")) { rename("$DATA/worker_prev.zip", "$DATA/worker_live.zip"); out(['ok' => true, 'to' => 'previous']); }
+    @unlink("$DATA/worker_live.zip"); out(['ok' => true, 'to' => 'repo original']);
+}
 default: bad('a=? samajh nahi aaya', 404);
 }

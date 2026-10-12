@@ -5,12 +5,12 @@ Website ke "Claude se madad" box ka message hub se uthata hai, Claude Code CLI (
 ko chalata hai, aur jawab hub par wapas bhejta hai (feed mein "Claude: ...").
 
 Pabandiyan (jaan boojh kar):
-  * Claude sirf Read/Grep/Glob kar sakta hai aur sirf m2.py, worker.py, html_parse.py EDIT kar sakta hai.
+  * Claude sirf Read/Grep/Glob kar sakta hai aur sirf m2.py, worker.py, html_parse.py, run_lab.py, doctor.py, lab/*.py EDIT kar sakta hai.
     Bash, Write, web access band hai.
   * Sirf wohi commands chalti hain jo tumhare hub token se aayi hon (hub khud token check karta hai),
     by="web", 900 characters tak, ek waqt mein ek, ghante mein max 12.
   * Har tabdeeli edits.log mein diff ke saath likhi jati hai aur alag git commit banta hai (rollback aasan).
-  * Bridge deploy nahi karta. worker.zip naya banta hai; deploy tum isi chat mein "deploy karo" keh kar karwate ho.
+  * Bridge site deploy nahi karta. Naya worker.zip hub par `setworker` se jata hai (sirf allowed file names, purana backup, log); Colab Cell 1 usay utha leta hai.
 
 Chalana (Termux / PC / Colab; `claude` CLI install + login ho):
   HUB=https://darkslategrey-pigeon-166872.hostingersite.com TOKEN=xxxx python3 bridge.py
@@ -22,7 +22,8 @@ TOKEN = os.environ.get("TOKEN", "")
 HERE = os.path.dirname(os.path.abspath(__file__))
 WORK = os.environ.get("LAB_WORK", os.path.join(os.path.expanduser("~"), "drh-bridge-work"))
 MAX_LEN, MAX_PER_HOUR, TIMEOUT = 900, 12, 900
-EDITABLE = ["m2.py", "worker.py", "html_parse.py"]
+EDITABLE = ["m2.py", "worker.py", "html_parse.py", "run_lab.py", "doctor.py", "lab/*.py"]
+ZIP_FILES = ["worker.py", "run_lab.py", "m2.py", "html_parse.py", "doctor.py", "make_sample.py", "setup_linux.sh"]
 if not HUB or not TOKEN:
     sys.exit("HUB aur TOKEN environment variables set karo")
 
@@ -31,6 +32,11 @@ def call(action, data=None, qs=""):
         headers={"X-Token": TOKEN, "Content-Type": "application/json"},
         data=None if data is None else json.dumps(data).encode())
     with urllib.request.urlopen(req, timeout=60) as r:
+        return json.loads(r.read().decode())
+
+def upload_worker(zip_path):
+    req = urllib.request.Request(f"{HUB}/api.php?a=setworker", headers={"X-Token": TOKEN, "Content-Type": "application/octet-stream"}, data=open(zip_path, "rb").read())
+    with urllib.request.urlopen(req, timeout=120) as r:
         return json.loads(r.read().decode())
 
 def git(*a):
@@ -57,9 +63,9 @@ def post(text):
     call("cmd", {"text": text[:950], "by": "claude"})
 
 def ask_claude(cmd):
-    prompt = (f"Tum Dr Harry Lab (PDF parsing hub) ke maintainer ho. Is folder mein worker.py, m2.py, html_parse.py hain. "
+    prompt = (f"Tum Dr Harry Lab (PDF parsing hub) ke maintainer ho. Is folder mein worker.py, run_lab.py, m2.py, lab/ (verify, images, vision_fix, report, pipeline) hain. "
               f"Hub: {HUB}. Latest jobs: {context()}\n\nUser ka message: {cmd}\n\n"
-              "Sirf zarurat par in teen files mein minimal edit karo. Jawab chhota, Roman English mein do: kya mila, kya badla.")
+              "Sirf zarurat par in files mein minimal edit karo (m2.py parser, lab/verify.py checks, lab/images.py, lab/vision_fix.py). Jawab chhota, Roman English mein do: kya mila, kya badla.")
     allowed = ["Read", "Grep", "Glob"] + [f"Edit({f})" for f in EDITABLE]
     r = subprocess.run(["claude", "-p", prompt, "--allowedTools", ",".join(allowed),
                         "--disallowedTools", "Bash,Write,WebFetch,WebSearch,NotebookEdit"],
@@ -68,11 +74,13 @@ def ask_claude(cmd):
 
 def record_edits(cmd):
     """Agar files badli hain: log, commit, worker.zip rebuild. Return summary ya ''."""
+    import fnmatch
+    ok = lambda f: any(fnmatch.fnmatch(f, p) for p in EDITABLE)
     changed = [f for f in git("diff", "--name-only").stdout.split() if f]
-    bad = [f for f in changed if f not in EDITABLE]
+    bad = [f for f in changed if not ok(f)]
     if bad:
         git("checkout", "--", *bad)
-        changed = [f for f in changed if f in EDITABLE]
+        changed = [f for f in changed if ok(f)]
     if not changed:
         return ""
     diff = git("diff").stdout
@@ -81,11 +89,21 @@ def record_edits(cmd):
     git("add", "-A"); git("commit", "-qm", "claude: " + cmd[:60])
     out = os.path.join(HERE, "worker.zip")
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
-        for f in ["worker.py", "m2.py", "html_parse.py", "setup_linux.sh"]:
+        for f in ZIP_FILES:
             p = os.path.join(WORK, f)
             if os.path.exists(p):
                 z.write(p, f)
-    return "Badli hui files: " + ", ".join(changed) + ". Naya worker.zip bana; deploy ke liye Claude chat mein 'deploy karo' likho."
+        lab = os.path.join(WORK, "lab")
+        for fn in sorted(os.listdir(lab)) if os.path.isdir(lab) else []:
+            if fn.endswith(".py"):
+                z.write(os.path.join(lab, fn), "lab/" + fn)
+    try:
+        up = upload_worker(out)
+        tail = "Naya worker.zip hub par chadh gaya: Colab Cell 1 dobara chalao, phir Dobara try dabao."
+        if not up.get("ok"): tail = f"worker.zip hub ne mana kiya: {up.get('error')}"
+    except Exception as e:
+        tail = f"worker.zip hub par upload nahi hua ({e}); local worker.zip bana hai."
+    return "Badli hui files: " + ", ".join(changed) + ". " + tail
 
 def main():
     setup_workdir()
