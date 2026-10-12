@@ -151,5 +151,24 @@ case 'clear': {    // purana data saaf: finished (done) jobs + unke files/result
     $now = time(); jmod($WORK, function ($w) use ($now) { foreach ($w as $k => $x) { if ($now - (int)($x['seen'] ?? 0) > 600) unset($w[$k]); } return $w; });
     out(['ok' => true, 'removed_jobs' => $removed]);
 }
+case 'files': {    // list files inside a finished result zip
+    $id = safe_id($_GET['id'] ?? ''); $f = "$DATA/results/$id.zip"; if (!is_file($f)) bad('result nahi', 404);
+    if (!class_exists('ZipArchive')) bad('server par zip support nahi hai', 500);
+    $z = new ZipArchive(); if ($z->open($f) !== true) bad('zip khula nahi', 500);
+    $r = []; for ($i = 0; $i < $z->numFiles && count($r) < 400; $i++) { $st = $z->statIndex($i); if (substr($st['name'], -1) === '/') continue; $r[] = ['name' => $st['name'], 'size' => (int)$st['size']]; }
+    $z->close(); out(['ok' => true, 'files' => $r]);
+}
+case 'file': {     // stream one file from the result zip (exact name only; nothing is extracted to disk)
+    $id = safe_id($_GET['id'] ?? ''); $f = "$DATA/results/$id.zip"; $name = (string)($_GET['name'] ?? ''); if (!is_file($f) || $name === '') bad('result nahi', 404);
+    if (!class_exists('ZipArchive')) bad('server par zip support nahi hai', 500);
+    $z = new ZipArchive(); if ($z->open($f) !== true) bad('zip khula nahi', 500);
+    $i = $z->locateName($name); if ($i === false) bad('file nahi mili', 404);
+    $st = $z->statIndex($i); if ($st['size'] > 64 * 1024 * 1024) bad('file bahut badi hai, zip download karo', 413);
+    $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+    $types = ['json' => 'application/json; charset=utf-8', 'txt' => 'text/plain; charset=utf-8', 'md' => 'text/plain; charset=utf-8', 'log' => 'text/plain; charset=utf-8', 'html' => 'text/plain; charset=utf-8', 'csv' => 'text/plain; charset=utf-8', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'gif' => 'image/gif', 'webp' => 'image/webp'];
+    header('Content-Type: ' . ($types[$ext] ?? 'application/octet-stream')); header('X-Content-Type-Options: nosniff'); header('Cache-Control: no-store'); header('Content-Length: ' . $st['size']);
+    if (isset($_GET['dl'])) header('Content-Disposition: attachment; filename="' . str_replace(['"', "\r", "\n"], '', basename($name)) . '"');
+    $h = $z->getStream($name); if (!$h) bad('file padhi nahi gayi', 500); fpassthru($h); fclose($h); $z->close(); exit;
+}
 default: bad('a=? samajh nahi aaya', 404);
 }

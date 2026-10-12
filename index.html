@@ -87,6 +87,21 @@ h2{margin:0 0 10px;font-size:15px;letter-spacing:.04em;text-transform:uppercase;
 .feed{margin-top:10px;max-height:150px;overflow:auto;font:12px/1.6 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--muted)}
 .maint{display:flex;justify-content:flex-end}
 .maint button{min-height:40px;background:none;border:0;color:var(--muted);font:inherit;font-size:13px;text-decoration:underline;cursor:pointer}
+.live{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-right:5px;animation:pulse 1.6s infinite}
+@keyframes pulse{50%{opacity:.25}}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin:12px 0}
+.tile{border:1px solid var(--line);border-radius:10px;padding:8px 12px;min-width:0}
+.tile b{display:block;font-size:22px;line-height:1.2;font-variant-numeric:tabular-nums}.tile span{font-size:12px;color:var(--muted)}
+.qnav{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;margin:12px 0}
+.qnav button,select{min-height:44px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;font:inherit;font-size:15px;padding:0 14px;cursor:pointer}
+select{width:100%;min-width:0}
+.qtxt{white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px;margin:6px 0 10px}
+.opt{display:flex;gap:10px;border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-top:6px;overflow-wrap:anywhere;font-size:15px}
+.opt b{flex:none}.opt.ok{border-color:var(--ok);background:var(--ok-soft)}
+.warns{margin-top:8px;border-radius:8px;background:var(--warn-soft);color:var(--warn);padding:8px 12px;font-size:13px;overflow-wrap:anywhere}
+details.ex{margin-top:10px}details.ex summary{cursor:pointer;min-height:36px;display:flex;align-items:center;color:var(--teal-ink)}
+pre.raw{margin:10px 0 0;max-height:320px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;font:12px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere}
+.chips button.pill{cursor:pointer;font:inherit;font-size:13px;color:var(--ink)}
 @media (min-width:700px){.hub-set{grid-template-columns:1fr 1fr}.step{grid-template-columns:minmax(0,1fr) auto}}
 @media (prefers-reduced-motion:reduce){.meter i{transition:none}}
 </style>
@@ -110,11 +125,16 @@ h2{margin:0 0 10px;font-size:15px;letter-spacing:.04em;text-transform:uppercase;
 
   <section class="card pj" id="cur" aria-live="polite"><p class="empty">Abhi koi file nahi. Upar PDF chhodo.</p></section>
 
+  <section class="card" id="outBox" hidden></section>
+
   <section class="card" id="claudeBox">
     <h2>Claude se madad</h2>
     <p class="note" style="margin:0 0 10px">Jo likhoge, current file ki details (naam, status, error) ke saath Claude chat mein khulega. Wahan Claude m2.py theek karke site par deploy kar sakta hai.</p>
     <form class="cmdbox" id="cmdForm"><input type="text" id="cmdIn" maxlength="800" placeholder="Claude ko kya karna hai? (khali chhodo to sirf details jayengi)" autocomplete="off" aria-label="Claude ko message"><button class="send" id="cmdBtn">Claude mein kholo</button></form>
-    <div class="acts" style="margin-top:10px"><button type="button" id="copyCtx">Details copy karo</button></div>
+    <div class="acts" style="margin-top:10px"><button type="button" id="attBtn">+ File attach</button><button type="button" id="copyCtx">Details copy karo</button></div>
+    <input type="file" id="attIn" multiple hidden accept="image/*,.json,.txt,.log,.pdf,.zip,.csv,.md">
+    <div class="chips" id="attList" style="margin-top:8px"></div>
+    <p class="note" id="attHint">Screenshot ya file attach karo: phone par share menu se seedha Claude app mein jati hai.</p>
     <div class="feed" id="cmds"></div>
   </section>
 
@@ -165,6 +185,7 @@ function pickCurrent(jobs){
 
 function render(j,state){
   if(uploading){$("cur").innerHTML=uploading;return}
+  if(j&&j.status==="done")ensureOut(j);else hideOut();
   if(!j){$("cur").innerHTML='<p class="empty">Abhi koi file nahi. Upar PDF chhodo.</p>';return}
   const now=state.now||Math.round(Date.now()/1000);
   const queued=state.jobs.filter(x=>x.status==="queued"&&x.id!==j.id).length;
@@ -179,9 +200,9 @@ function render(j,state){
   const stage=j.status==="failed"?"parsing fail hui":(j.stage||"");
   $("cur").innerHTML=
     `<div class="t"><b>${esc(j.name)}</b><span class="st ${esc(j.status)}">${esc(j.status)}</span></div>
-     <div class="meta"><span>${sz(j.size||0)}</span>${j.worker?`<span>worker: ${esc(j.worker)}</span>`:""}<span>shuru: ${ago(now-(j.created||now))} pehle</span>${j.status==="running"?`<span>update: ${ago(now-(j.updated||now))} pehle</span>`:""}</div>
+     <div class="meta"><span>${sz(j.size||0)}</span>${j.worker?`<span>worker: ${esc(j.worker)}</span>`:""}<span>shuru: ${ago(now-(j.created||now))} pehle</span>${j.status==="running"?`<span><i class="live"></i>live, update ${ago(now-(j.updated||now))} pehle</span>`:""}</div>
      <div class="big"><b>${p.toFixed(p<10?1:0)}%</b><span>${esc(stage)}</span></div>${meter(p,cls)}
-     ${steps?`<div class="steps">${steps}</div>`:""}
+     ${steps?`<div class="steps">${steps}</div>`:(j.status==="running"?'<div class="detail">Steps shuru hone ka intezar…</div>':"")}
      ${j.detail&&j.status!=="failed"?`<div class="detail">${esc(j.detail)}</div>`:""}
      ${j.status==="failed"?`<div class="err" id="errTxt">${esc(j.stage||"")}</div>`:""}
      ${queued?`<p class="note">${queued} aur file line mein hai</p>`:""}
@@ -208,6 +229,7 @@ function ctxText(extra){
     const st=(j.jobs||[]).filter(x=>+x.total).map(x=>`${x.label}: ${x.done}/${x.total}`).join("; ");
     if(st)t+=`Steps: ${st}\n`;
   }else t+="Abhi koi file nahi.\n";
+  if(ATT.length)t+=`Attach: ${ATT.map(f=>f.name).join(", ")}\n`;
   if(extra)t+=`\nMeri baat: ${extra}\n`;
   if(j&&j.status==="failed")t+="\nm2.py ko is PDF ke hisaab se theek karo, repo mein push karo aur Hostinger par deploy karo. Mere Colab worker ke liye Cell 1 dobara chalane ka batao.";
   return t;
@@ -216,11 +238,16 @@ function openClaude(text){
   try{navigator.clipboard.writeText(text)}catch(e){}
   window.open("https://claude.ai/new?q="+encodeURIComponent(text.slice(0,6000)),"_blank","noopener");
 }
+document.addEventListener("change",e=>{if(e.target.id==="qSel"){OUT.qi=+e.target.value;drawOut()}});
 document.addEventListener("click",async e=>{
   const b=e.target.closest("button");if(!b)return;
   if(b.dataset.del){await call("delete",{id:b.dataset.del});poll()}
   if(b.dataset.rq){await call("requeue",{id:b.dataset.rq});poll()}
-  if(b.dataset.fix){openClaude(ctxText(""));return}
+  if(b.dataset.fix){sendClaude("");return}
+  if(b.dataset.view){openJson(b.dataset.view);return}
+  if(b.dataset.qn){OUT.qi=Math.max(0,Math.min(qList().length-1,OUT.qi+(+b.dataset.qn)));drawOut();return}
+  if(b.dataset.raw){OUT.raw=!OUT.raw;drawOut();return}
+  if(b.dataset.rmatt){ATT.splice(+b.dataset.rmatt,1);drawAtt();return}
   if(b.dataset.copy){const t=($("errTxt")||{}).textContent||"";try{await navigator.clipboard.writeText(t);b.textContent="Copy ho gaya"}catch(x){b.textContent="Copy nahi hua"}}
 });
 
@@ -253,7 +280,7 @@ $("drop").ondrop=e=>{e.preventDefault();$("drop").classList.remove("on");files(e
 
 $("cmdForm").addEventListener("submit",ev=>{
   ev.preventDefault();const t=$("cmdIn").value.trim();
-  openClaude(ctxText(t));
+  sendClaude(t);
   if(t){call("cmd",{},{method:"POST",body:JSON.stringify({text:t,by:"web"})}).then(()=>{$("cmdIn").value="";poll()})}
 });
 $("copyCtx").onclick=async()=>{const b=$("copyCtx");try{await navigator.clipboard.writeText(ctxText($("cmdIn").value.trim()));b.textContent="Copy ho gaya"}catch(x){b.textContent="Copy nahi hua"}setTimeout(()=>b.textContent="Details copy karo",2000)};
@@ -264,6 +291,78 @@ $("clearOld").onclick=async()=>{
   alert(j.ok?`Saaf ho gaya: ${j.removed_jobs} purani file hatai`:"Nahi hua: "+(j.error||"error"));
   poll();
 };
+
+// ---- attach files (shared to Claude via the phone share sheet when supported) ----
+const ATT=[];
+function drawAtt(){
+  $("attList").innerHTML=ATT.map((f,i)=>`<span class="pill">${esc(f.name)} · ${sz(f.size)} <button type="button" data-rmatt="${i}" aria-label="hatao" style="border:0;background:none;color:var(--bad);font-size:16px;cursor:pointer;min-height:24px">×</button></span>`).join("");
+}
+$("attBtn").onclick=()=>$("attIn").click();
+$("attIn").onchange=e=>{for(const f of e.target.files){if(ATT.length<6&&f.size<=25*1024*1024)ATT.push(f)}e.target.value="";drawAtt()};
+async function sendClaude(extra){
+  const text=ctxText(extra);
+  if(ATT.length&&navigator.canShare&&navigator.canShare({files:ATT})){
+    try{await navigator.share({title:"Dr Harry Lab",text,files:ATT});return}
+    catch(e){if(e&&e.name==="AbortError")return}
+  }
+  if(ATT.length)$("attHint").textContent="Is browser se files seedha nahi ja sakti. Claude tab khul raha hai, wahan files khud attach karo.";
+  openClaude(text);
+}
+
+// ---- output viewer: parsed JSON from the finished result zip ----
+const OUT={id:null,files:[],cur:null,data:null,rawText:"",qi:0,raw:false,err:""};
+const qList=()=>OUT.data&&Array.isArray(OUT.data.questions)?OUT.data.questions:[];
+function hideOut(){if(OUT.id===null)return;OUT.id=null;$("outBox").hidden=true;$("outBox").innerHTML=""}
+async function ensureOut(j){
+  if(OUT.id===j.id)return;
+  Object.assign(OUT,{id:j.id,files:[],cur:null,data:null,rawText:"",qi:0,raw:false,err:""});
+  $("outBox").hidden=false;$("outBox").innerHTML='<h2>Output</h2><p class="empty">Output load ho raha hai…</p>';
+  const f=await call("files",{id:j.id});
+  if(OUT.id!==j.id)return;
+  if(!f.ok){$("outBox").innerHTML='<h2>Output</h2><p class="empty">'+esc(f.error||"load nahi hua")+'</p>';return}
+  OUT.files=f.files;
+  const js=f.files.filter(x=>/\.json$/i.test(x.name));
+  const pick=js.find(x=>/answer_key\.json$/i.test(x.name))||js.find(x=>/student_view\.json$/i.test(x.name))||js[0];
+  if(pick)await openJson(pick.name);else drawOut();
+}
+async function openJson(name){
+  const id=OUT.id;Object.assign(OUT,{cur:name,data:null,rawText:"",qi:0,raw:false,err:""});drawOut();
+  try{
+    const r=await fetch(api()+"?"+new URLSearchParams({a:"file",id,name}),{headers:{"X-Token":tok()}});
+    if(!r.ok)throw new Error("server "+r.status);
+    const t=await r.text();if(OUT.id!==id||OUT.cur!==name)return;
+    OUT.rawText=t;OUT.data=JSON.parse(t);
+  }catch(e){OUT.err="JSON nahi khula: "+(e.message||e)}
+  drawOut();
+}
+const fileUrl=(name,dl)=>api()+"?"+new URLSearchParams(Object.assign({a:"file",id:OUT.id,name,token:tok()},dl?{dl:1}:{}));
+function qHTML(q){
+  const ops=(q.options||[]).map(o=>`<div class="opt ${o.id===q.correct_answer_id?"ok":""}"><b>${esc(String(o.id||"").toUpperCase())}${o.id===q.correct_answer_id?" ✓":""}</b><span>${esc(o.text)}</span></div>`).join("");
+  const w=(q.warnings||[]).length?`<div class="warns">${(q.warnings||[]).map(esc).join("<br>")}</div>`:"";
+  const ex=q.explanation?`<details class="ex"><summary>Explanation</summary><div class="qtxt">${esc(typeof q.explanation==="string"?q.explanation:JSON.stringify(q.explanation,null,2))}</div></details>`:"";
+  return `<div class="qtxt"><b>Q${esc(q.number||"")}</b> ${esc(q.text||"")}</div>${ops}${w}${ex}`;
+}
+function drawOut(){
+  const box=$("outBox"),js=OUT.files.filter(x=>/\.json$/i.test(x.name)),qs=qList();
+  let h='<h2>Output (JSON)</h2>';
+  h+=`<div class="chips">${js.map(x=>`<button type="button" class="pill ${x.name===OUT.cur?"ok":""}" data-view="${esc(x.name)}">${esc(x.name.split("/").pop())} · ${sz(x.size)}</button>`).join("")||'<span class="note">Is result mein koi JSON nahi mili.</span>'}</div>`;
+  if(OUT.err)h+=`<p class="note" style="color:var(--bad)">${esc(OUT.err)}</p>`;
+  else if(OUT.cur&&!OUT.data)h+='<p class="empty">JSON load ho rahi hai…</p>';
+  if(qs.length){
+    const flagged=qs.filter(q=>(q.warnings||[]).length).length,ans=qs.filter(q=>q.correct_answer_id).length;
+    h+=`<div class="tiles"><div class="tile"><b>${qs.length}</b><span>sawal</span></div><div class="tile"><b>${ans}</b><span>jawab set</span></div><div class="tile"><b>${flagged}</b><span>flagged</span></div></div>`;
+    OUT.qi=Math.max(0,Math.min(qs.length-1,OUT.qi));
+    h+=`<div class="qnav"><button type="button" data-qn="-1" aria-label="pichla">‹</button><select id="qSel" aria-label="Sawal chuno">${qs.map((q,i)=>`<option value="${i}" ${i===OUT.qi?"selected":""}>Q${esc(q.number||i+1)}${(q.warnings||[]).length?" ⚠":""}</option>`).join("")}</select><button type="button" data-qn="1" aria-label="agla">›</button></div>`;
+    h+=qHTML(qs[OUT.qi]);
+  }
+  if(OUT.data){
+    h+=`<div class="acts"><button type="button" data-raw="1">${OUT.raw?"Raw JSON chhupao":"Raw JSON dekho"}</button><a href="${esc(fileUrl(OUT.cur,true))}">Poora JSON download</a></div>`;
+    if(OUT.raw)h+=`<pre class="raw">${esc(OUT.rawText.length>15000?OUT.rawText.slice(0,15000)+"\n… (baqi download karke dekho)":OUT.rawText)}</pre>`;
+  }
+  const others=OUT.files.length-js.length;
+  if(others>0)h+=`<p class="note">Result zip mein ${others} aur file hai (images, viewer, OCR text); upar ke card se zip download karo.</p>`;
+  box.innerHTML=h;
+}
 
 // theme
 const root=document.documentElement;
