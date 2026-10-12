@@ -62,13 +62,27 @@ def context():
 def post(text):
     call("cmd", {"text": text[:950], "by": "claude"})
 
+def claude_cmd(args):
+    """Run `claude` through a shell: on Termux the launcher can be a script without a shebang (direct exec gives Errno 8 'Exec format error'); a shell runs it fine."""
+    sh = shutil.which("bash") or shutil.which("sh") or "sh"
+    return [sh, "-c", 'exec claude "$@"', "claude"] + args
+
+def check_claude():
+    try:
+        r = subprocess.run(claude_cmd(["--version"]), capture_output=True, text=True, timeout=60)
+        out = (r.stdout or r.stderr).strip()[:120]
+        print("claude CLI:", out, "(rc=%d)" % r.returncode)
+        return r.returncode == 0
+    except Exception as e:
+        print("claude CLI chal nahi raha:", e); return False
+
 def ask_claude(cmd):
     prompt = (f"Tum Dr Harry Lab (PDF parsing hub) ke maintainer ho. Is folder mein worker.py, run_lab.py, m2.py, lab/ (verify, images, vision_fix, report, pipeline) hain. "
               f"Hub: {HUB}. Latest jobs: {context()}\n\nUser ka message: {cmd}\n\n"
               "Sirf zarurat par in files mein minimal edit karo (m2.py parser, lab/verify.py checks, lab/images.py, lab/vision_fix.py). Jawab chhota, Roman English mein do: kya mila, kya badla.")
     allowed = ["Read", "Grep", "Glob"] + [f"Edit({f})" for f in EDITABLE]
-    r = subprocess.run(["claude", "-p", prompt, "--allowedTools", ",".join(allowed),
-                        "--disallowedTools", "Bash,Write,WebFetch,WebSearch,NotebookEdit"],
+    r = subprocess.run(claude_cmd(["-p", prompt, "--allowedTools", ",".join(allowed),
+                        "--disallowedTools", "Bash,Write,WebFetch,WebSearch,NotebookEdit"]),
                        cwd=WORK, capture_output=True, text=True, timeout=TIMEOUT)
     return (r.stdout or r.stderr or "(koi jawab nahi)").strip()
 
@@ -107,6 +121,8 @@ def record_edits(cmd):
 
 def main():
     setup_workdir()
+    if not check_claude():
+        print("WARNING: claude CLI theek se nahi chal raha. Termux mein `claude --version` aur `claude` (login) pehle khud chala kar dekho.")
     since = int(time.time() * 1000); runs = []; last_hb = 0
     print("Bridge chal raha hai. Ctrl+C se band.")
     while True:
