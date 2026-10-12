@@ -137,6 +137,31 @@ def count_questions(out_dir):
     return best
 
 
+def auto_report(jid, pname, text):
+    """Tell the hub (and so the Claude bridge) about a problem worth fixing. Never raises."""
+    try:
+        call("cmd", body=json.dumps({"text": f"[job:{jid}] {text}"[:990], "by": "auto"}).encode(), tries=2)
+    except Exception:
+        pass
+
+
+def flag_summary(outd):
+    """(total, flagged, text) from student_view.json: top flag codes and a few examples."""
+    try:
+        qs = json.load(open(os.path.join(outd, "student_view.json"), encoding="utf-8")).get("questions", [])
+    except Exception:
+        return 0, 0, ""
+    bad = [q for q in qs if not str(q.get("status", "")).startswith("verified")]
+    codes = {}
+    for q in bad:
+        for f in q.get("flags", []):
+            c = f.get("code", f) if isinstance(f, dict) else str(f)
+            codes[c] = codes.get(c, 0) + 1
+    top = ", ".join(f"{c}x{n}" for c, n in sorted(codes.items(), key=lambda t: -t[1])[:6])
+    ex = "; ".join(f"Q{q.get('number')}:{(q['flags'][0].get('code') if isinstance(q['flags'][0], dict) else q['flags'][0])}" for q in bad[:6] if q.get("flags"))
+    return len(qs), len(bad), f"top flags: {top}. e.g. {ex}"
+
+
 def process(job):
     jid, pname = job["id"], job["name"]
     base = os.path.join(WORK, jid)
@@ -210,9 +235,14 @@ def process(job):
                     z.write(full, rel)
         prog("result upload ho raha hai", 99.8)
         upload_result(jid, zpath)
+        tot, nbad, ftxt = flag_summary(outd)
+        if nbad:
+            auto_report(jid, pname, f"AUTO {pname}: {nbad}/{tot} sawal flagged. {ftxt}")
         print(f"[{time.strftime('%H:%M:%S')}] done: {pname}", flush=True)
     except Exception as e:
         print(f"[{time.strftime('%H:%M:%S')}] FAIL {pname}: {e}", flush=True)
+        if "0 sawal" in str(e) or "rc=" in str(e):
+            auto_report(jid, pname, f"AUTO {pname} fail: {str(e)[:700]}")
         try:
             call("fail", body=json.dumps({"id": jid, "error": str(e)[:1450]}).encode(), tries=2)
         except Exception:

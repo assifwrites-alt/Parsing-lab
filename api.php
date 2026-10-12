@@ -177,6 +177,10 @@ case 'log': {      // worker posts diagnostics (probe + end of run.log); Claude 
     $raw = (string)file_get_contents('php://input'); if (strlen($raw) > 60000) $raw = substr($raw, -60000);
     file_put_contents("$dir/$id.log", $raw, LOCK_EX); out(['ok' => true]);
 }
+case 'readlog': {  // Claude bridge: read data/logs/<id>.log (GET, read-only)
+    $id = safe_id($_GET['id'] ?? ''); $f = "$DATA/logs/$id.log";
+    out(['ok' => true, 'log' => is_file($f) ? substr((string)file_get_contents($f), -6000) : '']);
+}
 case 'think': {    // run the on-hub Claude agent for web command ?id=<cmd id> (fire-and-forget from the website)
     if (empty($CFG['anthropic_key'])) bad('anthropic_key config.php mein nahi hai', 501);
     @ignore_user_abort(true); @set_time_limit(280);
