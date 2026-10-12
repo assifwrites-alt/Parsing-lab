@@ -73,7 +73,7 @@ case 'upload': {   // POST raw chunk: id, name, idx, total, size
     if ($have === $total) {
         if (!assemble($dir, $total, "$DATA/files/$id.pdf")) bad('jodne mein dikkat', 500);
         $sz = filesize("$DATA/files/$id.pdf");
-        $opts = []; $m = strtolower((string)($_GET['mode'] ?? '')); if (in_array($m, ['text', 'amedex'], true)) $opts['mode'] = $m;
+        $opts = []; $m = strtolower((string)($_GET['mode'] ?? '')); if (in_array($m, ['text', 'ocr', 'amedex'], true)) $opts['mode'] = $m;
         if (($_GET['vision'] ?? '') === '0') $opts['vision'] = false; $lim = (int)($_GET['limit'] ?? 0); if ($lim > 0 && $lim <= 5000) $opts['limit'] = $lim;
         jmod($JOBS, function ($j) use ($id, $name, $sz, $opts) { $j[$id] = ['id' => $id, 'name' => $name, 'size' => $sz, 'status' => 'queued', 'stage' => 'upload ho gayi, worker ka intezar', 'pct' => 0, 'created' => time(), 'updated' => time(), 'jobs' => [], 'opts' => $opts]; return $j; });
         $done = true;
@@ -212,6 +212,9 @@ case 'think': {    // run the on-hub Claude agent for web command ?id=<cmd id> (
     try { $reply = ag_run((string)$CFG['anthropic_key'], (string)($CFG['anthropic_model'] ?? 'claude-sonnet-5-5'), (string)$cmd['text']); }
     catch (Throwable $e) { $reply = 'Agent error: ' . $e->getMessage(); }
     $post($reply); out(['ok' => true]);
+}
+case 'workerver': { // sha1 of the worker zip workers should run (they self-update when it changes)
+    $f = is_file("$DATA/worker_live.zip") ? "$DATA/worker_live.zip" : __DIR__ . '/worker.zip'; out(['ok' => true, 'ver' => is_file($f) ? sha1_file($f) : '']);
 }
 case 'workerzip': { // latest worker.zip (Claude-edited version if it exists, else the repo one)
     $f = is_file("$DATA/worker_live.zip") ? "$DATA/worker_live.zip" : __DIR__ . '/worker.zip'; if (!is_file($f)) bad('worker.zip nahi', 404);

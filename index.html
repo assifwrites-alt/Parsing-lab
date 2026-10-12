@@ -228,7 +228,7 @@ h2{font-family:var(--disp);color:var(--brand2);letter-spacing:.16em}h2::before{c
     <div style="display:grid;gap:16px;min-width:0">
       <div class="drop" id="drop" role="button" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4m0 0L7 9m5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg><b>PDF / HTML yahan chhodo ya dabao</b><small>PDF ya HTML/MHTML, kitni bhi badi; chhote tukdon mein upload hoti hai</small></div>
       <details class="card" id="upOpts" style="padding:12px 16px"><summary style="cursor:pointer;font-weight:600">Upload options <span class="note" id="optSum" style="margin:0 0 0 8px"></span></summary>
-        <div class="opts"><label>Parser mode<select id="oMode"><option value="">Auto (PDF dekh kar)</option><option value="text">Text-layer (Question N of M)</option><option value="amedex">Screenshot OCR (amedex)</option></select></label>
+        <div class="opts"><label>Parser mode<select id="oMode"><option value="">Auto (PDF dekh kar)</option><option value="text">Text-layer (Question N of M)</option><option value="ocr">Screenshot OCR (phone screenshots / image PDF)</option></select></label>
         <label>API vision fix (credits lagte hain)<select id="oVis"><option value="0">Off (Termux Claude se fix karao)</option><option value="1">On (API key + credits)</option></select></label>
         <label>Sirf pehle N sawal/pages (test run)<input type="number" id="oLim" min="0" max="5000" placeholder="khali = sab"></label></div>
         <p class="note">Ye options agli upload par lagte hain. Mode galat chuna to result flag hoga, tab Auto par wapas jao.</p></details>

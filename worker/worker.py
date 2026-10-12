@@ -5,7 +5,7 @@ and the result zip back. Run it on any Linux machine (Hostinger VPS, Google Cola
   HUB_URL=https://yoursite.com/lab  LAB_TOKEN=...  python3 worker.py
 
 Needs: python3, poppler-utils, tesseract-ocr, mupdf-tools, pillow, numpy (see setup_linux.sh)."""
-import os, sys, time, json, glob, subprocess, urllib.request, urllib.parse, urllib.error, shutil, zipfile, socket, re
+import io, os, sys, time, json, glob, subprocess, urllib.request, urllib.parse, urllib.error, shutil, zipfile, socket, re
 
 HUB = os.environ.get("HUB_URL", "").rstrip("/")
 TOKEN = os.environ.get("LAB_TOKEN", "")
@@ -112,9 +112,9 @@ def probe(pdf):
 
 def pick_mode(pr):
     forced = os.environ.get("LAB_MODE", "auto").lower()
-    if forced in ("amedex", "text"):
-        return forced
-    return "text" if pr["text_chars_p1_5"] >= 400 else "amedex"
+    if forced in ("amedex", "ocr", "text"):
+        return "amedex" if forced == "ocr" else forced
+    return "text" if pr["text_chars_p1_5"] >= 400 else "amedex"   # "amedex" is only m2.py's internal name for screenshot OCR mode
 
 
 def hub_log(jid, header, log_path):
@@ -162,26 +162,79 @@ def flag_summary(outd):
     return len(qs), len(bad), f"top flags: {top}. e.g. {ex}"
 
 
+def cleanup_old(keep):
+    """Failed runs keep their work folder for resume; drop ones untouched for a day."""
+    try:
+        for d in os.listdir(WORK):
+            p = os.path.join(WORK, d)
+            if d != keep and os.path.isdir(p) and time.time() - os.path.getmtime(p) > 86400:
+                shutil.rmtree(p, ignore_errors=True)
+    except Exception:
+        pass
+
+
+ALLOWED_UP = re.compile(r"^(worker\.py|run_lab\.py|m2\.py|html_parse\.py|doctor\.py|make_sample\.py|setup_linux\.sh|lab/[a-z_]+\.py)$")
+
+
+def self_update():
+    """If the hub serves a newer worker zip (e.g. Claude fixed m2.py), install it and restart this process. Never runs while a job is being processed."""
+    try:
+        ver = call("workerver", tries=1).get("ver", "")
+    except Exception:
+        return
+    vf = os.path.join(HERE, ".zipsha")
+    cur = open(vf).read().strip() if os.path.exists(vf) else ""
+    if not cur:
+        open(vf, "w").write(ver); return
+    if not ver or ver == cur:
+        return
+    try:
+        data, _ = call("workerzip", raw=True, timeout=120, tries=2)
+        import tempfile, py_compile
+        tmp = tempfile.mkdtemp()
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            names = [n for n in z.namelist() if not n.endswith("/")]
+            if any(not ALLOWED_UP.match(n) for n in names) or "worker.py" not in names or "m2.py" not in names:
+                raise RuntimeError("zip mein ajeeb file ya zaroori file gayab")
+            z.extractall(tmp)
+        for n in names:
+            if n.endswith(".py"): py_compile.compile(os.path.join(tmp, n), doraise=True)
+        for n in names:
+            dst = os.path.join(HERE, n); os.makedirs(os.path.dirname(dst), exist_ok=True); shutil.copyfile(os.path.join(tmp, n), dst)
+        open(vf, "w").write(ver)
+        print(f"[{time.strftime('%H:%M:%S')}] naya worker code mila ({ver[:8]}): restart", flush=True)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+    except Exception as e:
+        print("self-update nahi hua:", e, flush=True)
+
+
 def process(job):
     jid, pname = job["id"], job["name"]
     base = os.path.join(WORK, jid)
-    shutil.rmtree(base, ignore_errors=True)
+    resumed = os.path.isdir(os.path.join(base, "out")) and any(os.scandir(os.path.join(base, "out")))
+    shutil.rmtree(os.path.join(base, "jobs"), ignore_errors=True)   # a failed run keeps in/ out/ w/ so a retry resumes (m2.py continues from its own output + OCR cache)
+    for fn in ("result.zip",):
+        try: os.remove(os.path.join(base, fn))
+        except OSError: pass
     for d in ("in", "out", "w", "jobs"):
         os.makedirs(os.path.join(base, d), exist_ok=True)
+    cleanup_old(jid)
+    ok = False
     pdf = os.path.join(base, "in", pname)
     prog = lambda stage, pct, jobs=None, detail="": call("progress", body=json.dumps({"id": jid, "stage": stage, "pct": pct, "jobs": jobs or [], "detail": detail}).encode(), tries=2)
     try:
-        prog("File download ho rahi hai", 0)
-        download_pdf(job, pdf)
+        prog("Resume: pehle ka kaam wahin se jari" if resumed else "File download ho rahi hai", 0)
+        if not (os.path.exists(pdf) and int(job.get("size") or 0) and os.path.getsize(pdf) == int(job["size"])):
+            download_pdf(job, pdf)
         is_html0 = pname.lower().endswith((".html", ".htm", ".mhtml", ".mht"))
         pr = probe(pdf) if not is_html0 else {"pages": 0, "text_chars_p1_5": 0, "images_p1_5": 0, "sample": ""}
         opts = job.get("opts") or {}
-        mode = "html" if is_html0 else (opts["mode"] if opts.get("mode") in ("text", "amedex") else pick_mode(pr))
+        mode = "html" if is_html0 else ({"ocr": "amedex"}.get(opts["mode"], opts["mode"]) if opts.get("mode") in ("text", "ocr", "amedex") else pick_mode(pr))
         header = (f"opts={opts} file={pname} size={os.path.getsize(pdf)} mode={mode} pages={pr['pages']} text_chars(p1-5)={pr['text_chars_p1_5']} "
                   f"images(p1-5)={pr['images_p1_5']}\n---- text sample (page 1-5) ----\n{pr['sample']}")
         hub_log(jid, header, os.path.join(base, "run.log"))
         if mode == "amedex" and not shutil.which("tesseract"):
-            raise RuntimeError("blocked: tesseract missing on this worker (OCR jobs need tesseract-ocr). Run setup.sh or install tesseract-ocr, then Dobara try.")
+            raise RuntimeError("blocked: tesseract missing on this worker (screenshot-OCR jobs need tesseract-ocr). Run setup.sh or install tesseract-ocr, then Dobara try.")
         env = dict(os.environ, M2_AMX_JOBS=os.path.join(base, "jobs"), M2_AMX_WORK=os.path.join(base, "w"), M2_AMX_STATUS=os.path.join(base, "status.json"))
         log = open(os.path.join(base, "run.log"), "wb")
         t0 = time.time(); pct = 0.0; last_sent = 0
@@ -244,16 +297,21 @@ def process(job):
         if nbad:
             auto_report(jid, pname, f"AUTO {pname}: {nbad}/{tot} sawal flagged. {ftxt}")
         print(f"[{time.strftime('%H:%M:%S')}] done: {pname}", flush=True)
+        ok = True
     except Exception as e:
         print(f"[{time.strftime('%H:%M:%S')}] FAIL {pname}: {e}", flush=True)
-        if "0 sawal" in str(e) or "rc=" in str(e):
+        import traceback
+        tb = traceback.format_exc()[-2500:]
+        hub_log(jid, f"FAIL {pname}: {e}\n{tb}", os.path.join(base, "run.log"))
+        if not str(e).startswith("blocked:") and "download" not in str(e) and "time limit" not in str(e):
             auto_report(jid, pname, f"AUTO {pname} fail: {str(e)[:700]}")
         try:
             call("fail", body=json.dumps({"id": jid, "error": str(e)[:1450]}).encode(), tries=2)
         except Exception:
             pass
     finally:
-        shutil.rmtree(base, ignore_errors=True)
+        if ok:
+            shutil.rmtree(base, ignore_errors=True)
 
 
 def run_doctor():
@@ -279,6 +337,7 @@ def main():
     while True:
         if time.time() - last_hb > 20:
             hb(); last_hb = time.time()
+        self_update()
         try:
             r = call("next", {"worker": NAME}, tries=2)
         except Exception as e:

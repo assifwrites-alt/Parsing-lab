@@ -145,7 +145,8 @@ def ask_claude(cmd, auto=False):
         cmd = ("AUTOMATIC report from the worker (no human wrote this). Decide if the flags show a SYSTEMATIC parser problem "
                "(same flag code on many questions, or 0 questions, or a crash). If yes, find the root cause in m2.py / lab/*.py and make the smallest fix. "
                "If the flags are one-off content problems, or you cannot verify the cause from the evidence, DO NOT edit: just say so (the vision fix / human review handles those). "
-               "Never loosen verification checks to make flags disappear.\n" + cmd)
+               "Never loosen verification checks to make flags disappear. "
+               "If you fix a crash/0-question failure, the job is retried automatically after your edit and resumes from the saved progress, so fix the ROOT CAUSE, keep the edit minimal, and say exactly what you changed.\n" + cmd)
     prompt = (f"Tum Dr Harry Lab (PDF parsing hub) ke maintainer ho. Is folder mein worker.py, run_lab.py, m2.py, lab/ (verify, images, vision_fix, report, pipeline) hain. "
               f"Hub: {HUB}. Latest jobs: {context()}\n\nUser ka message: {cmd}{extra}\n\n"
               "Sirf zarurat par in files mein minimal edit karo (m2.py parser, lab/verify.py checks, lab/images.py, lab/vision_fix.py). Jawab chhota, Roman English mein do: kya mila, kya badla.")
@@ -209,7 +210,7 @@ def record_edits(cmd):
                 z.write(os.path.join(lab, fn), "lab/" + fn)
     try:
         up = upload_worker(out)
-        tail = "Naya worker.zip hub par chadh gaya: Colab Cell 1 dobara chalao, phir Dobara try dabao."
+        tail = "Naya worker.zip hub par chadh gaya: worker khud update ho jayega."
         if not up.get("ok"): tail = f"worker.zip hub ne mana kiya: {up.get('error')}"
     except Exception as e:
         tail = f"worker.zip hub par upload nahi hua ({e}); local worker.zip bana hai."
@@ -219,7 +220,7 @@ def main():
     setup_workdir()
     if not check_claude():
         print("WARNING: claude CLI theek se nahi chal raha. Termux mein `claude --version` aur `claude` (login) pehle khud chala kar dekho.")
-    since = int(time.time() * 1000); runs = []; autos = []; fixes = []; last_hb = 0
+    since = int(time.time() * 1000); runs = []; autos = []; fixes = []; requeues = {}; last_hb = 0
     print("Bridge chal raha hai. Ctrl+C se band.")
     while True:
         try:
@@ -252,6 +253,14 @@ def main():
                 try:
                     reply = ask_claude(text, auto); extra = record_edits(text)
                     post(reply + ("\n\n" + extra if extra else ""))
+                    mj = re.search(r"\[job:([A-Za-z0-9_-]+)\]", text)
+                    if auto and extra.startswith("Badli hui files") and "hub par chadh gaya" in extra and mj:
+                        jid = mj.group(1); requeues[jid] = requeues.get(jid, 0) + 1
+                        if requeues[jid] <= 2:
+                            call("requeue", qs="&id=" + jid)
+                            post("Job dobara line mein daal di: worker naya code utha kar wahin se resume karega (koshish %d/2)." % requeues[jid])
+                        else:
+                            post("Is job par 2 auto-koshish ho chuki; ab aap dekho (Dobara try ya Claude ko likho).")
                 except Exception as e:
                     post(f"Bridge error: {e}")
         except Exception as e:
