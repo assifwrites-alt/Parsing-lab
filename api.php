@@ -59,7 +59,7 @@ case 'state': {
     $cmds = []; if (is_file($CMDS)) { $L = array_slice(file($CMDS, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES), -40); foreach ($L as $l) { $j = json_decode($l, true); if ($j) $cmds[] = $j; } }
     foreach ($w as $k => $x) $w[$k]['ago'] = $now - (int)($x['seen'] ?? 0);
     usort($jobs, fn($x, $y) => ($y['created'] ?? 0) <=> ($x['created'] ?? 0));
-    out(['ok' => true, 'now' => $now, 'jobs' => $jobs, 'workers' => array_values($w), 'cmds' => $cmds]);
+    out(['ok' => true, 'now' => $now, 'jobs' => $jobs, 'workers' => array_values($w), 'cmds' => $cmds, 'agent' => !empty($CFG['anthropic_key'])]);
 }
 case 'upload': {   // POST raw chunk: id, name, idx, total, size
     $id = safe_id($_GET['id'] ?? ''); $name = safe_name($_GET['name'] ?? 'file.pdf'); $idx = (int)($_GET['idx'] ?? 0); $total = max(1, (int)($_GET['total'] ?? 1)); $size = (int)($_GET['size'] ?? 0);
@@ -175,6 +175,27 @@ case 'log': {      // worker posts diagnostics (probe + end of run.log); Claude 
     $dir = "$DATA/logs"; if (!is_dir($dir)) @mkdir($dir, 0775, true);
     $raw = (string)file_get_contents('php://input'); if (strlen($raw) > 60000) $raw = substr($raw, -60000);
     file_put_contents("$dir/$id.log", $raw, LOCK_EX); out(['ok' => true]);
+}
+case 'think': {    // run the on-hub Claude agent for web command ?id=<cmd id> (fire-and-forget from the website)
+    if (empty($CFG['anthropic_key'])) bad('anthropic_key config.php mein nahi hai', 501);
+    @ignore_user_abort(true); @set_time_limit(280);
+    $id = safe_id((string)($_GET['id'] ?? '')); $cmd = null;
+    if (is_file($CMDS)) foreach (file($CMDS, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $l) { $j = json_decode($l, true); if ($j && ($j['id'] ?? '') === $id) $cmd = $j; }
+    if (!$cmd || ($cmd['by'] ?? '') !== 'web') bad('command nahi mili', 404);
+    $lk = fopen("$DATA/think.lock", 'c'); if (!$lk || !flock($lk, LOCK_EX | LOCK_NB)) bad('Claude abhi ek aur kaam par hai', 429);
+    $st = jmod("$DATA/think.json", function ($x) use ($id) { $x['done'] = $x['done'] ?? []; $x['runs'] = array_values(array_filter($x['runs'] ?? [], fn($t) => time() - $t < 3600)); $x['dup'] = in_array($id, $x['done'], true); $x['limit'] = count($x['runs']) >= 15; if (!$x['dup'] && !$x['limit']) { $x['runs'][] = time(); $x['done'][] = $id; $x['done'] = array_slice($x['done'], -100); } return $x; });
+    if ($st['dup']) bad('ye command pehle chal chuki', 409);
+    $post = function (string $t) use ($CMDS) { file_put_contents($CMDS, json_encode(['id' => (string)(int)(microtime(true) * 1000), 'ts' => (int)(microtime(true) * 1000), 'text' => substr($t, 0, 1900), 'by' => 'claude'], JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX); };
+    if ($st['limit']) { $post('Ghante ki had (15 messages) poori ho gayi, thori der baad likho.'); out(['ok' => true, 'limited' => true]); }
+    require_once __DIR__ . '/agent.php';
+    $post('Dekh raha hun...');
+    try { $reply = ag_run((string)$CFG['anthropic_key'], (string)($CFG['anthropic_model'] ?? 'claude-sonnet-5-5'), (string)$cmd['text']); }
+    catch (Throwable $e) { $reply = 'Agent error: ' . $e->getMessage(); }
+    $post($reply); out(['ok' => true]);
+}
+case 'workerzip': { // latest worker.zip (Claude-edited version if it exists, else the repo one)
+    $f = is_file("$DATA/worker_live.zip") ? "$DATA/worker_live.zip" : __DIR__ . '/worker.zip'; if (!is_file($f)) bad('worker.zip nahi', 404);
+    header('Content-Type: application/zip'); header('Content-Disposition: attachment; filename="worker.zip"'); header('Content-Length: ' . filesize($f)); readfile($f); exit;
 }
 default: bad('a=? samajh nahi aaya', 404);
 }
