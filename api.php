@@ -177,6 +177,19 @@ case 'log': {      // worker posts diagnostics (probe + end of run.log); Claude 
     $raw = (string)file_get_contents('php://input'); if (strlen($raw) > 60000) $raw = substr($raw, -60000);
     file_put_contents("$dir/$id.log", $raw, LOCK_EX); out(['ok' => true]);
 }
+case 'attach': {   // website chat: POST raw body (image/pdf/text, max 12MB) for the Claude bridge to read
+    $name = safe_name($_GET['name'] ?? 'file'); if (!preg_match('/\.(png|jpe?g|webp|gif|pdf|txt|log|json|csv|md)$/i', $name)) bad('file type allowed nahi');
+    $dir = "$DATA/attach"; if (!is_dir($dir)) @mkdir($dir, 0775, true);
+    foreach (glob("$dir/*") ?: [] as $o) if (filemtime($o) < time() - 3 * 86400) @unlink($o);
+    $fn = date('mdHis') . substr(md5(uniqid('', true)), 0, 4) . '_' . $name; $n = body_to("$dir/$fn");
+    if ($n <= 0) { @unlink("$dir/$fn"); bad('khali file'); }
+    if ($n > 12 * 1048576) { @unlink("$dir/$fn"); bad('file 12MB se badi hai'); }
+    out(['ok' => true, 'att' => $fn, 'size' => $n]);
+}
+case 'attfile': {   // Claude bridge downloads an attachment
+    $fn = safe_name($_GET['f'] ?? ''); $f = "$DATA/attach/$fn"; if (!is_file($f)) bad('attachment nahi mili', 404);
+    header('Content-Type: application/octet-stream'); header('Content-Length: ' . filesize($f)); header('Cache-Control: no-store'); readfile($f); exit;
+}
 case 'readlog': {  // Claude bridge: read data/logs/<id>.log (GET, read-only)
     $id = safe_id($_GET['id'] ?? ''); $f = "$DATA/logs/$id.log";
     out(['ok' => true, 'log' => is_file($f) ? substr((string)file_get_contents($f), -6000) : '']);

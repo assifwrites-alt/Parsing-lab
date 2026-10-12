@@ -8,6 +8,9 @@ command -v termux-wake-lock >/dev/null 2>&1 && termux-wake-lock
 for p in git python nodejs; do command -v "${p/python/python3}" >/dev/null 2>&1 || pkg install -y "$p"; done
 # Newer Claude Code needs a glibc binary that Termux (Android) cannot run; 2.1.112 is the last JS build that works there.
 export DISABLE_AUTOUPDATER=1
+# Phone storage: bridge Claude may READ ~/storage/shared/DrHarry and Download (override with LAB_SHARE=dir1:dir2). Android shows a permission popup once.
+[ -d "$HOME/storage/shared" ] || { command -v termux-setup-storage >/dev/null 2>&1 && termux-setup-storage; sleep 5; }
+mkdir -p "$HOME/storage/shared/DrHarry" 2>/dev/null
 command -v claude >/dev/null 2>&1 || npm install -g @anthropic-ai/claude-code@2.1.112
 command -v claude >/dev/null 2>&1 || { echo "claude CLI install nahi hua"; exit 1; }
 out=$(claude --version 2>&1); rc=$?; if [ $rc -ne 0 ]; then echo "claude --version fail (rc=$rc, path=$(command -v claude)):"; echo "$out" | head -8; exit 1; fi; echo "claude ok: $out"

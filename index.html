@@ -171,7 +171,7 @@ textarea{width:100%;min-height:90px;font:inherit;font-size:15px;color:var(--ink)
         <div class="acts" style="margin-top:10px"><button type="button" id="attBtn">+ File</button><button type="button" id="copyCtx">Details copy</button><button type="button" id="newChat">Naye chat mein</button></div>
         <input type="file" id="attIn" multiple hidden accept="image/*,.json,.txt,.log,.pdf,.zip,.csv,.md">
         <div class="chips" id="attList" style="margin-top:8px"></div>
-        <p class="note" id="attHint">Claude site par hi chalta hai: likho, jawab yahin aata hai (kuch minute lag sakte hain). Zarurat par woh m2.py theek kar ke naya worker.zip bana deta hai.</p>
+        <p class="note" id="attHint">Claude site par hi chalta hai: likho (+ File se PDF/image bhi bhej sakte ho, Bhejo dabane par Termux Claude ko milti hai), jawab yahin aata hai (kuch minute lag sakte hain). Zarurat par woh m2.py theek kar ke naya worker.zip bana deta hai.</p>
       </section>
       <section class="card"><details class="set"><summary>Hub settings</summary>
         <div class="hub-set"><input id="hubUrl" placeholder="hub URL (khali = isi site ka api.php)" aria-label="Hub URL" autocomplete="off"><input id="hubTok" type="password" placeholder="token" aria-label="Token" autocomplete="off"></div>
@@ -378,7 +378,18 @@ $("cmdForm").addEventListener("submit",ev=>{
   const b=$("cmdBtn");b.textContent="Bhej diya";setTimeout(()=>b.textContent="Bhejo",2000);
   const j=lastState&&((SEL&&lastState.jobs.find(x=>x.id===SEL))||pickCurrent(lastState.jobs));
   const full=j?`[${j.name} | ${j.status} ${(+j.pct||0).toFixed(0)}%] ${t}`:t;
-  call("cmd",{},{method:"POST",body:JSON.stringify({text:full.slice(0,900),by:"web"})}).then(r=>{$("cmdIn").value="";poll();if(r.ok&&r.cmd&&lastState&&lastState.agent)fetch(api()+"?a=think&id="+encodeURIComponent(r.cmd.id),{headers:{"X-Token":tok()}}).then(()=>poll(),()=>{})});
+  (async()=>{
+    let marks="";
+    if(ATT.length){
+      const ok=[];
+      for(const f of ATT){
+        try{const r=await fetch(api()+"?"+new URLSearchParams({a:"attach",name:f.name}),{method:"POST",body:f,headers:{"X-Token":tok()}});const x=await r.json();if(x.ok)ok.push(x.att);else $("attHint").textContent="Attach nahi hui ("+f.name+"): "+(x.error||"error")}
+        catch(e){$("attHint").textContent="Attach nahi hui ("+f.name+"): network"}
+      }
+      if(ok.length){marks=" [att:"+ok.join(",")+"]";ATT.length=0;drawAtt()}
+    }
+    return call("cmd",{},{method:"POST",body:JSON.stringify({text:full.slice(0,Math.max(100,900-marks.length))+marks,by:"web"})});
+  })().then(r=>{$("cmdIn").value="";poll();if(r.ok&&r.cmd&&lastState&&lastState.agent)fetch(api()+"?a=think&id="+encodeURIComponent(r.cmd.id),{headers:{"X-Token":tok()}}).then(()=>poll(),()=>{})});
 });
 $("newChat").onclick=()=>sendClaude($("cmdIn").value.trim());
 $("copyCtx").onclick=async()=>{const b=$("copyCtx");try{await navigator.clipboard.writeText(ctxText($("cmdIn").value.trim()));b.textContent="Copy ho gaya"}catch(x){b.textContent="Copy nahi hua"}setTimeout(()=>b.textContent="Details copy karo",2000)};

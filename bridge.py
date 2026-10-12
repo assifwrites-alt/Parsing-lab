@@ -15,7 +15,7 @@ Pabandiyan (jaan boojh kar):
 Chalana (Termux / PC / Colab; `claude` CLI install + login ho):
   HUB=https://darkslategrey-pigeon-166872.hostingersite.com TOKEN=xxxx python3 bridge.py
 """
-import json, os, re, shutil, subprocess, sys, time, urllib.request, zipfile
+import json, os, re, shutil, subprocess, sys, time, urllib.parse, urllib.request, zipfile
 
 HUB = os.environ.get("HUB", "").rstrip("/")
 TOKEN = os.environ.get("TOKEN", "")
@@ -23,6 +23,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 WORK = os.environ.get("LAB_WORK", os.path.join(os.path.expanduser("~"), "drh-bridge-work"))
 MAX_LEN, MAX_PER_HOUR, TIMEOUT = 1000, 12, 900
 MAX_AUTO_PER_HOUR = 4
+SHARE = [d for d in (os.environ.get('LAB_SHARE', '').split(':') if os.environ.get('LAB_SHARE') else [os.path.expanduser('~/storage/shared/DrHarry'), os.path.expanduser('~/storage/shared/Download')]) if d and os.path.isdir(d)]
+ATTDIR = os.path.join(os.path.expanduser('~'), 'drh-attach')
 EDITABLE = ["m2.py", "worker.py", "html_parse.py", "run_lab.py", "doctor.py", "lab/*.py"]
 ZIP_FILES = ["worker.py", "run_lab.py", "m2.py", "html_parse.py", "doctor.py", "make_sample.py", "setup_linux.sh"]
 if not HUB or not TOKEN:
@@ -77,8 +79,29 @@ def check_claude():
     except Exception as e:
         print("claude CLI chal nahi raha:", e); return False
 
+def fetch_attachments(cmd):
+    """Download [att:a,b] files from the hub into ATTDIR; return list of local paths. Names are re-checked (no path tricks)."""
+    m = re.search(r"\[att:([^\]]+)\]", cmd); paths = []
+    if not m: return paths
+    os.makedirs(ATTDIR, exist_ok=True)
+    for fn in m.group(1).split(",")[:6]:
+        fn = fn.strip()
+        if not re.fullmatch(r"[\w .()\-]{1,120}", fn) or ".." in fn: continue
+        try:
+            req = urllib.request.Request(f"{HUB}/api.php?a=attfile&f=" + urllib.parse.quote(fn), headers={"X-Token": TOKEN})
+            with urllib.request.urlopen(req, timeout=120) as r: data = r.read()
+            p = os.path.join(ATTDIR, fn); open(p, "wb").write(data); paths.append(p)
+        except Exception as e:
+            print("attachment nahi aayi:", fn, e)
+    return paths
+
 def ask_claude(cmd, auto=False):
     extra = ""
+    atts = fetch_attachments(cmd)
+    if atts:
+        extra += "\n\nUser ne ye files bheji hain (Read tool se kholo, PDF/image dono padh sakte ho): " + ", ".join(atts)
+    if SHARE:
+        extra += "\nPhone ke ye folders bhi read-only padh sakte ho (user kuch kahe to): " + ", ".join(SHARE)
     m = re.search(r"\[job:([A-Za-z0-9_-]+)\]", cmd)
     if m:
         try: extra = "\n\nHub log (end) for this job:\n" + call("readlog", qs="&id=" + m.group(1)).get("log", "")[-3500:]
@@ -92,7 +115,10 @@ def ask_claude(cmd, auto=False):
               f"Hub: {HUB}. Latest jobs: {context()}\n\nUser ka message: {cmd}{extra}\n\n"
               "Sirf zarurat par in files mein minimal edit karo (m2.py parser, lab/verify.py checks, lab/images.py, lab/vision_fix.py). Jawab chhota, Roman English mein do: kya mila, kya badla.")
     allowed = ["Read", "Grep", "Glob"] + [f"Edit({f})" for f in EDITABLE]
-    r = subprocess.run(claude_cmd(["-p", prompt, "--allowedTools", ",".join(allowed),
+    dirs = []
+    for d in [ATTDIR] + SHARE:
+        if os.path.isdir(d): dirs += ["--add-dir", d]
+    r = subprocess.run(claude_cmd(["-p", prompt] + dirs + ["--allowedTools", ",".join(allowed),
                         "--disallowedTools", "Bash,Write,WebFetch,WebSearch,NotebookEdit"]),
                        cwd=WORK, capture_output=True, text=True, timeout=TIMEOUT)
     return (r.stdout or r.stderr or "(koi jawab nahi)").strip()
