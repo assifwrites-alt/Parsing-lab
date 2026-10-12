@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#4f46e5">
+<meta name="theme-color" content="#02070a">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap">
+<script>try{document.documentElement.dataset.theme=localStorage.getItem("drh-theme")||"hacker"}catch(e){document.documentElement.dataset.theme="hacker"}</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <title>Dr Harry Lab</title>
@@ -149,20 +152,65 @@ pre.raw{margin:10px 0 0;max-height:320px;overflow:auto;background:var(--soft);bo
 .stb.verified{background:var(--ok-soft);color:var(--ok)}.stb.needs_human{background:var(--bad-soft);color:var(--bad)}.stb.human{background:var(--brand-soft);color:var(--brand-ink)}
 textarea{width:100%;min-height:90px;font:inherit;font-size:15px;color:var(--ink);background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:8px 12px}
 .qimg{max-width:100%;border-radius:10px;margin:6px 0;border:1px solid var(--line)}
+
+/* ---- hacker / neon themes (default: hacker) ---- */
+:root[data-theme="hacker"]{--bg:#02070a;--card:rgba(5,18,14,.82);--ink:#d4ffe4;--muted:#6fb78a;--line:#12463a;--soft:rgba(10,40,30,.65);
+  --brand:#00ff9c;--brand2:#00d4ff;--brand-ink:#5dffc0;--brand-soft:rgba(0,255,156,.12);--hot:#ff2bd6;--gold:#ffd23f;
+  --ok:#2dff8a;--ok-soft:rgba(45,255,138,.14);--warn:#ffb020;--warn-soft:rgba(255,176,32,.14);--bad:#ff4d6d;--bad-soft:rgba(255,77,109,.16);
+  --shadow:0 0 0 1px rgba(0,255,156,.08),0 10px 36px -14px rgba(0,255,156,.35);color-scheme:dark}
+:root[data-theme="neon"]{--bg:#0b0618;--card:rgba(22,12,48,.85);--ink:#f1e9ff;--muted:#a995d6;--line:#3a2470;--soft:rgba(48,28,96,.6);
+  --brand:#b46bff;--brand2:#00e5ff;--brand-ink:#d2a6ff;--brand-soft:rgba(180,107,255,.16);--hot:#ff3da5;--gold:#ffd23f;
+  --ok:#3dffb0;--ok-soft:rgba(61,255,176,.14);--warn:#ffc233;--warn-soft:rgba(255,194,51,.14);--bad:#ff5d8f;--bad-soft:rgba(255,93,143,.16);
+  --shadow:0 0 0 1px rgba(180,107,255,.12),0 10px 36px -14px rgba(180,107,255,.45);color-scheme:dark}
+:root{--hot:#ff2bd6;--gold:#ffd23f;--disp:Orbitron,Inter,system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace}
+:root[data-theme="hacker"] body,:root[data-theme="neon"] body{font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;font-size:14px}
+#fx{position:fixed;inset:0;width:100%;height:100%;z-index:-1;pointer-events:none;opacity:.32}
+:root[data-theme="light"] #fx,:root[data-theme="dark"] #fx{display:none}
+.brand b{font-family:var(--disp);font-weight:900;font-size:clamp(18px,4.5vw,24px);letter-spacing:.14em;text-transform:uppercase;
+  background:linear-gradient(90deg,var(--brand),var(--brand2),var(--hot),var(--gold),var(--brand));background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:hue 8s linear infinite}
+.brand small{font-family:var(--mono);letter-spacing:.08em}.brand small::after{content:"_";animation:blink 1s steps(1) infinite;color:var(--brand)}
+@keyframes hue{to{background-position:-300% 0}}@keyframes blink{50%{opacity:0}}
+.logo{font-family:var(--disp);font-weight:900;box-shadow:0 0 18px -2px var(--brand);background:linear-gradient(135deg,var(--brand),var(--hot))}
+.hero h1{font-family:var(--disp);font-weight:800;letter-spacing:.04em}
+.term{font-family:var(--mono);font-size:14px;color:var(--brand);margin:0 0 6px;min-height:1.6em}.term b{color:var(--hot)}.term i{color:var(--gold);font-style:normal}
+.term .cur{display:inline-block;width:9px;height:1.05em;background:var(--brand);vertical-align:-2px;animation:blink 1s steps(1) infinite}
+.card,.kpi{backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+:root[data-theme="hacker"] .card:hover,:root[data-theme="neon"] .card:hover{border-color:color-mix(in srgb,var(--brand) 45%,var(--line))}
+h2{font-family:var(--disp);color:var(--brand2);letter-spacing:.16em}h2::before{content:"> ";color:var(--hot)}
+.kpi:nth-child(1){border-top:2px solid var(--brand)}.kpi:nth-child(2){border-top:2px solid var(--brand2)}.kpi:nth-child(3){border-top:2px solid var(--gold)}.kpi:nth-child(4){border-top:2px solid var(--hot)}
+.kpi b{font-family:var(--disp)}.kpi:nth-child(1) b{color:var(--brand)}.kpi:nth-child(2) b{color:var(--brand2)}.kpi:nth-child(3) b{color:var(--gold)}.kpi:nth-child(4) b{color:var(--hot)}
+.ring{background:conic-gradient(var(--brand),var(--brand2) calc(var(--p)*.5%),var(--hot) calc(var(--p)*1%),var(--soft) 0)}
+.ring.ok{background:conic-gradient(var(--ok) calc(var(--p)*1%),var(--soft) 0)}.ring.bad{background:conic-gradient(var(--bad) calc(var(--p)*1%),var(--soft) 0)}
+.ring>div{font-family:var(--disp)}
+.meter i{background:linear-gradient(90deg,var(--brand),var(--brand2),var(--hot))}
+.tbtn,button.pri,.send{transition:box-shadow .2s,transform .1s}.tbtn:hover{box-shadow:0 0 14px -2px var(--brand)}
+:root[data-theme="hacker"] .send,:root[data-theme="hacker"] .acts .pri,:root[data-theme="neon"] .send,:root[data-theme="neon"] .acts .pri{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#021a12;font-weight:700;border-color:transparent}
+.drop{border-color:color-mix(in srgb,var(--brand) 55%,var(--line))}.drop:hover,.drop.on{box-shadow:0 0 24px -6px var(--brand);border-color:var(--brand)}
+.stb.verified,.st.done{box-shadow:0 0 10px -4px var(--ok)}
+.tlog{margin:0;max-height:240px;overflow:auto;background:#010605;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font:12px/1.5 var(--mono);color:#48ff9f;white-space:pre-wrap;word-break:break-word}
+.tlog .e{color:var(--bad)}.tlog .w{color:var(--warn)}.tlog .p{color:var(--brand2)}
+.pal{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.6);display:grid;align-items:start;justify-items:center;padding:12vh 12px 0}
+.pal>div{width:100%;max-width:520px;background:var(--card);border:1px solid var(--brand);border-radius:14px;box-shadow:0 0 40px -8px var(--brand);overflow:hidden}
+.pal input{border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;font-family:var(--mono)}
+.pal button{display:flex;justify-content:space-between;width:100%;border:0;background:none;color:var(--ink);padding:10px 14px;font:inherit;cursor:pointer;text-align:left}
+.pal button.on,.pal button:hover{background:var(--brand-soft);color:var(--brand-ink)}.pal small{color:var(--muted)}
+@media (max-width:640px){header.top .wrap{flex-wrap:wrap;gap:6px 8px;padding-block:8px}header.top .sp{display:none}.tbtn{padding:6px 9px;min-height:34px;font-size:12px}.brand{flex:1 1 60%}.brand small{display:none}}
+@media (prefers-reduced-motion:reduce){#fx{display:none}.brand b,.brand small::after,.term .cur{animation:none}}
 </style>
 </head>
 <body>
+<canvas id="fx" aria-hidden="true"></canvas>
 <header class="top"><div class="wrap">
   <div class="logo" aria-hidden="true">DH</div>
-  <div class="brand"><b>Dr Harry Lab</b><small>Parsing &amp; scraping console</small></div>
+  <div class="brand"><b>DR HARRY</b><small>PARSING LAB // MCQ console</small></div>
   <div class="sp"></div>
   <div class="chips"><span class="pill" id="hubState"><i></i>hub: dhoondh raha hoon…</span><span class="pill" id="wkState"><i></i>worker: ?</span><span class="pill" id="brState"><i></i>Claude: ?</span></div>
-  <button class="tbtn" id="notifBtn" type="button" title="Job khatam hone par alert">Alerts</button><button class="tbtn" id="healthBtn" type="button">Health</button><button class="tbtn" id="theme" type="button" aria-label="Theme badlo">Theme</button>
+  <button class="tbtn" id="palBtn" type="button" title="Ctrl+K">⌘K</button><button class="tbtn" id="fxBtn" type="button" title="Matrix effect on/off">FX</button><button class="tbtn" id="notifBtn" type="button" title="Job khatam hone par alert">Alerts</button><button class="tbtn" id="healthBtn" type="button">Health</button><button class="tbtn" id="theme" type="button" aria-label="Theme badlo">Theme</button>
 </div></header>
 
 <div class="login" id="login" hidden><form class="card" id="loginForm" autocomplete="off"><div class="logo" aria-hidden="true" style="margin-bottom:10px">DH</div><h1 style="margin:0 0 4px;font-size:22px">Dr Harry Lab</h1><p class="note" style="margin:0 0 14px" id="loginMsg">Login: apna hub token daalo.</p>
 <input id="loginTok" type="password" placeholder="token" aria-label="Token" autocomplete="current-password"><button class="send" style="width:100%;margin-top:10px">Login</button></form></div>
-<div class="wrap hero"><h1>Upload karo. Live dekho. Result lo.</h1><p>PDF ya HTML upload karo, worker parse karta hai, progress yahan live dikhta hai. Masla aaye to Claude ko yahin se likho.</p></div>
+<div class="wrap hero"><p class="term" id="term" aria-hidden="true"></p><h1>Upload karo. Live dekho. Result lo.</h1><p>PDF ya HTML upload karo, worker parse karta hai, progress yahan live dikhta hai. Masla aaye to Claude ko yahin se likho.</p></div>
 
 <main class="wrap">
   <section class="card" id="healthBox" hidden></section>
@@ -178,6 +226,7 @@ textarea{width:100%;min-height:90px;font:inherit;font-size:15px;color:var(--ink)
         <p class="note">Ye options agli upload par lagte hain. Mode galat chuna to result flag hoga, tab Auto par wapas jao.</p></details>
       <input type="file" id="pfile" accept="application/pdf,.pdf,.html,.htm,.mhtml,.mht" multiple hidden>
       <section class="card pj" id="cur" aria-live="polite"><p class="empty">Abhi koi file nahi. Upar PDF chhodo.</p></section>
+      <section class="card" id="logBox" hidden><h2>Live log</h2><pre class="tlog" id="tlog"></pre></section>
       <section class="card" id="outBox" hidden></section>
     </div>
 
@@ -319,7 +368,7 @@ async function poll(){
   if(!j.ok){setPill($("hubState"),"bad",j.error||"hub error");return}
   lastState=j;
   const cur=(SEL&&j.jobs.find(x=>x.id===SEL))||pickCurrent(j.jobs);
-  notifyChanges(j);render(cur,j);kpis(j);jobList(j,cur);chat(j);
+  notifyChanges(j);render(cur,j);pullLog(cur);kpis(j);jobList(j,cur);chat(j);
   const w=j.workers.filter(x=>x.ago<60);
   w.length?setPill($("wkState"),"ok","worker online"):setPill($("wkState"),"warn","worker offline");
   const bo=j.bridge_ago!=null&&j.bridge_ago<60;
@@ -328,7 +377,7 @@ async function poll(){
 
 $("notifBtn").onclick=async()=>{
   if(!("Notification" in window)){toast("Is browser mein alerts nahi");return}
-  const p=await Notification.requestPermission();toast(p==="granted"?"Alerts on: job khatam hone par batayenge":"Alerts allow nahi hue")
+  LS("drh-beep","1");const p=await Notification.requestPermission();toast(p==="granted"?"Alerts on: job khatam hone par batayenge":"Alerts allow nahi hue")
 };
 const REPO="assifwrites-alt/Parsing-lab";
 function ctxText(extra){
@@ -387,7 +436,7 @@ function notifyChanges(state){
   for(const j of state.jobs){
     const p=PREV[j.id];PREV[j.id]=j.status;
     if(p&&p!==j.status&&(j.status==="done"||j.status==="failed")){
-      const m=(j.status==="done"?"Mukammal: ":"Fail: ")+j.name;toast(m);
+      const m=(j.status==="done"?"Mukammal: ":"Fail: ")+j.name;toast(m);beep(j.status==="done");
       try{if("Notification" in window&&Notification.permission==="granted")new Notification("Dr Harry Lab",{body:m})}catch(e){}
     }
   }
@@ -629,10 +678,80 @@ async function drawHealth(){
 }
 $("healthBtn").onclick=()=>{$("healthBox").hidden?drawHealth():($("healthBox").hidden=true)};
 
-// theme
 const root=document.documentElement;
-try{const t=localStorage.getItem("drh-theme");if(t)root.dataset.theme=t}catch(e){}
-$("theme").onclick=()=>{const dark=root.dataset.theme?root.dataset.theme==="dark":matchMedia("(prefers-color-scheme:dark)").matches;const nx=dark?"light":"dark";root.dataset.theme=nx;try{localStorage.setItem("drh-theme",nx)}catch(e){}};
+
+// ---- hacker FX: matrix rain (pauses when hidden / reduced motion / non-dark-hacker themes) ----
+(function(){
+  const cv=$("fx"),cx=cv.getContext&&cv.getContext("2d");if(!cx)return;
+  let on=LS("drh-fx")!=="0",W=0,H=0,cols=[],last=0;const FS=16,chars="01アイウエオカキクケコ{}[]<>/=+*#$%&";
+  const reduce=matchMedia("(prefers-reduced-motion:reduce)").matches;
+  function size(){W=cv.width=innerWidth;H=cv.height=innerHeight;cols=Array.from({length:Math.ceil(W/FS)},()=>Math.random()*H/FS)}
+  function col(){return getComputedStyle(document.documentElement).getPropertyValue("--brand").trim()||"#00ff9c"}
+  function frame(t){
+    if(!on||reduce||document.hidden||!/hacker|neon/.test(root.dataset.theme||"")){requestAnimationFrame(frame);return}
+    if(t-last>70){last=t;cx.fillStyle="rgba(2,7,10,.14)";cx.fillRect(0,0,W,H);cx.fillStyle=col();cx.font=FS+"px monospace";
+      cols.forEach((y,i)=>{cx.fillText(chars[Math.random()*chars.length|0],i*FS,y*FS);cols[i]=y*FS>H&&Math.random()>.975?0:y+1})}
+    requestAnimationFrame(frame)}
+  addEventListener("resize",size);size();requestAnimationFrame(frame);
+  window.setFx=v=>{on=v;LS("drh-fx",v?"1":"0");if(!v)cx.clearRect(0,0,W,H)};window.fxOn=()=>on;
+})();
+$("fxBtn").onclick=()=>{setFx(!fxOn());toast("Matrix FX "+(fxOn()?"on":"off"))};
+
+// ---- terminal-style intro line ----
+(function(){
+  const el=$("term");if(!el)return;const full="root@dr-harry:~# parse --pdf --verify --flag --fix";let i=0;
+  const paint=n=>{el.innerHTML=esc(full.slice(0,n)).replace("root@dr-harry","<b>root@dr-harry</b>").replace(/--(\w+)/g,"<i>--$1</i>")+'<span class="cur"></span>'};
+  if(matchMedia("(prefers-reduced-motion:reduce)").matches){paint(full.length);return}
+  const t=setInterval(()=>{paint(++i);if(i>=full.length)clearInterval(t)},38);
+})();
+
+// ---- live log of the current job (hub keeps probe info + end of run.log) ----
+let LOGID="",LOGT=0;
+async function pullLog(j){
+  const box=$("logBox");
+  if(!j||!(j.status==="running"||j.status==="failed"||j.status==="done")){box.hidden=true;return}
+  if(Date.now()-LOGT<5000&&LOGID===j.id&&j.status!=="running")return;
+  LOGT=Date.now();const r=await call("readlog",{id:j.id});
+  if(!r.ok||!r.log){box.hidden=true;return}
+  LOGID=j.id;box.hidden=false;const el=$("tlog"),stick=el.scrollHeight-el.scrollTop-el.clientHeight<40;
+  el.innerHTML=r.log.split("\n").map(l=>{const e=esc(l);return /error|fail|traceback|exception/i.test(l)?`<span class="e">${e}</span>`:/warn|flag/i.test(l)?`<span class="w">${e}</span>`:/^\[lab\]|page \d+\//.test(l)?`<span class="p">${e}</span>`:e}).join("\n");
+  if(stick)el.scrollTop=el.scrollHeight;
+}
+
+// ---- command palette (Ctrl/Cmd+K) ----
+const ACTIONS=[
+  ["Upload PDF/HTML","pick file",()=>$("pfile").click()],
+  ["Claude se baat karo","focus chat",()=>{$("cmdIn").scrollIntoView({block:"center"});$("cmdIn").focus()}],
+  ["System health","doctor",()=>$("healthBtn").click()],
+  ["Theme badlo","hacker/neon/dark/light",()=>$("theme").click()],
+  ["Matrix FX on/off","effect",()=>$("fxBtn").click()],
+  ["Alerts on karo","notifications",()=>$("notifBtn").click()],
+  ["Upload options kholo","mode/vision/limit",()=>{$("upOpts").open=true;$("upOpts").scrollIntoView({block:"center"})}],
+  ["Sirf failed files dikhao","filter",()=>{$("jStat").value="failed";$("jStat").onchange()}],
+  ["Sab files dikhao","filter",()=>{$("jStat").value="";$("jStat").onchange()}],
+  ["Sawal search","viewer",()=>{const s=$("qSearch");s?s.focus():toast("Pehle koi done result kholo")}]
+];
+function openPal(){
+  if(document.querySelector(".pal"))return;
+  const p=document.createElement("div");p.className="pal";p.innerHTML='<div><input id="palIn" placeholder="Command likho…" aria-label="Command palette" autocomplete="off"><div id="palList"></div></div>';
+  document.body.appendChild(p);const inp=p.querySelector("input"),lst=p.querySelector("#palList");let sel=0,cur=ACTIONS;
+  const draw=()=>{lst.innerHTML=cur.map((a,i)=>`<button type="button" data-i="${i}" class="${i===sel?"on":""}"><span>${esc(a[0])}</span><small>${esc(a[1])}</small></button>`).join("")||'<p class="empty">Kuch nahi mila</p>'};
+  const close=()=>p.remove(),run=i=>{const a=cur[i];if(a){close();a[2]()}};
+  inp.oninput=()=>{const q=inp.value.toLowerCase();cur=ACTIONS.filter(a=>(a[0]+" "+a[1]).toLowerCase().includes(q));sel=0;draw()};
+  inp.onkeydown=e=>{if(e.key==="Escape")close();else if(e.key==="ArrowDown"){sel=Math.min(cur.length-1,sel+1);draw();e.preventDefault()}else if(e.key==="ArrowUp"){sel=Math.max(0,sel-1);draw();e.preventDefault()}else if(e.key==="Enter")run(sel)};
+  p.onclick=e=>{const b=e.target.closest("button[data-i]");if(b)run(+b.dataset.i);else if(e.target===p)close()};
+  draw();inp.focus();
+}
+$("palBtn").onclick=openPal;
+document.addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="k"){e.preventDefault();openPal()}});
+// small beep when a job ends (only after you pressed Alerts)
+function beep(ok){try{if(LS("drh-beep")!=="1")return;const a=new (window.AudioContext||window.webkitAudioContext)(),o=a.createOscillator(),g=a.createGain();o.frequency.value=ok?880:220;o.connect(g);g.connect(a.destination);g.gain.value=.06;o.start();o.stop(a.currentTime+.18)}catch(e){}}
+
+// theme
+
+const THEMES=["hacker","neon","dark","light"];
+$("theme").textContent=root.dataset.theme||"hacker";
+$("theme").onclick=()=>{const nx=THEMES[(THEMES.indexOf(root.dataset.theme)+1)%THEMES.length];root.dataset.theme=nx;$("theme").textContent=nx;try{localStorage.setItem("drh-theme",nx)}catch(e){}};
 
 boot();
 </script>
