@@ -9,6 +9,7 @@ declare(strict_types=1);
 $cfgFile = __DIR__ . '/config.php';
 if (!is_file($cfgFile)) { http_response_code(500); header('Content-Type: application/json'); echo json_encode(['ok'=>false,'error'=>'config.php nahi mila: config.sample.php ko config.php naam se copy karke token badlo']); exit; }
 $CFG = require $cfgFile;
+if (empty($CFG['anthropic_key']) && is_file(__DIR__ . '/key.php')) { $k = require __DIR__ . '/key.php'; if (is_string($k) && $k !== '') $CFG['anthropic_key'] = trim($k); }
 $DATA = rtrim($CFG['data_dir'] ?? (__DIR__ . '/data'), '/');
 foreach (['', '/up', '/files', '/results'] as $d) { if (!is_dir($DATA . $d)) @mkdir($DATA . $d, 0775, true); }
 if (!is_file($DATA . '/.htaccess')) @file_put_contents($DATA . '/.htaccess', "Require all denied\nDeny from all\n");

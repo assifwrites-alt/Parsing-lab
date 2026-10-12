@@ -1,4 +1,4 @@
 Options -Indexes
-<FilesMatch "^(config\.php|config\.sample\.php|agent\.php)$">
+<FilesMatch "^(config\.php|config\.sample\.php|agent\.php|key\.php)$">
   Require all denied
 </FilesMatch>
