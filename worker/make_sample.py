@@ -48,5 +48,30 @@ def build(path, variant=False):
             c.drawString(50, y, ln[:100]); y -= 15
         c.showPage()
     c.save()
+def build_with_images(path, workdir):
+    """Same questions, plus a header logo on every page and an ECG-like picture inside question 2 (tests image boundaries)."""
+    import os
+    import numpy as np
+    from PIL import Image, ImageDraw
+    os.makedirs(workdir, exist_ok=True)
+    im = Image.new("RGB", (700, 260), "white"); dr = ImageDraw.Draw(im)
+    for x in range(0, 700, 100): dr.line((x, 0, x, 260), fill=(255, 200, 200))
+    dr.line([(i * 7, 130 + int(60 * np.sin(i / 3) * (1 if i % 14 < 3 else .1))) for i in range(100)], fill="black", width=3); im.save(workdir + "/ecg.png")
+    lg = Image.new("RGB", (160, 40), (20, 90, 160)); ImageDraw.Draw(lg).text((10, 12), "PASSMED", fill="white"); lg.save(workdir + "/logo.png")
+    c = canvas.Canvas(path, pagesize=A4); W, H = A4; n = len(QS)
+    for i, (stem, opts, ans, pct, expl) in enumerate(QS, 1):
+        c.drawImage(workdir + "/logo.png", W - 200, H - 50, 160, 40)
+        y = H - 80; c.setFont("Helvetica-Bold", 11); c.drawString(50, y, f"Question {i} of {n}"); y -= 24; c.setFont("Helvetica", 11)
+        for j in range(0, len(stem), 90): c.drawString(50, y, stem[j:j + 90]); y -= 15
+        if i == 2:
+            c.drawString(50, y, "The ECG is shown below."); y -= 15; c.drawImage(workdir + "/ecg.png", 50, y - 135, 350, 130); y -= 150
+        y -= 8
+        for k, (o, p) in enumerate(zip(opts, pct)): c.drawString(60, y, f"{'ABCDE'[k]}. {o}    {p}%"); y -= 16
+        y -= 8; c.setFont("Helvetica-Bold", 11); c.drawString(50, y, "Explanation"); y -= 16; c.setFont("Helvetica", 11)
+        c.drawString(50, y, f"The correct answer is {'ABCDE'[ans]}."); y -= 15
+        for ln in expl.split("\n"): c.drawString(50, y, ln[:100]); y -= 15
+        c.showPage()
+    c.save()
+
 if __name__ == "__main__":
     build(sys.argv[1] if len(sys.argv) > 1 else "tests/sample_pm.pdf", variant=len(sys.argv) > 2 and sys.argv[2] == "flagged")

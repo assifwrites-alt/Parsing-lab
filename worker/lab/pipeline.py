@@ -2,7 +2,7 @@
   python -m lab.pipeline <pdf> <out_dir> [--limit N] [--mode auto|text|amedex] [--no-vision] [--skip-parse]
 Re-running is cheap: OCR text, image decisions and vision answers are cached in out_dir."""
 import glob, json, os, subprocess, sys, time
-from . import images as imgmod, report, vision, vision_fix
+from . import images as imgmod, pageimages, report, vision, vision_fix
 from .source import Source, render_pages
 from .verify import verify_all
 
@@ -35,11 +35,25 @@ def run(pdf, out_dir, limit=None, mode="auto", use_vision=True, skip_parse=False
     if not kf: raise RuntimeError("m2.py produced no answer_key.json")
     data = json.load(open(kf)); qs = data.get("questions", [])
     if not qs: raise RuntimeError(f"0 questions parsed (mode={mode}, type={kind}, platform={platform}); format not matched")
+    budget = vision.Budget(out_dir)
+    # Stage 1: image boundaries + classification BEFORE verification, so verification knows which images each question has
+    lab_imgs, why = ([], None)
+    if kind in ("text-layer", "mixed"):
+        lab_imgs, why = pageimages.extract(pdf, out_dir)
+        if why: notes.append(why)
+    img_dir = os.path.join(out_dir, "images")
+    files = ([os.path.join(img_dir, f) for f in sorted(os.listdir(img_dir)) if f.lower().endswith(imgmod.IMG_EXT)] if os.path.isdir(img_dir) else []) + [os.path.join(out_dir, i["file"]) for i in lab_imgs]
+    dec = imgmod.classify_dir(out_dir, budget if use_vision and budget.available() else None, files=files)
+    meta_by_file = {i["file"]: i for i in lab_imgs}
+    for rel, d in dec.items():
+        m = meta_by_file.get(rel)
+        if m: d.update({"question": m["question"], "page": m["page"], "bbox": m["bbox"], "placement": m["placement"]})
+    import json as _j; _j.dump(dec, open(os.path.join(out_dir, "_image_decisions.json"), "w"), indent=1)
+    for q in qs:   # attach useful/uncertain images so verification can check 'image referenced but missing'
+        q["images"] = [{"file": d.get("clean") or rel} for rel, d in dec.items() if d.get("question") == q.get("number") and d["decision"] in ("useful", "uncertain")]
+    progress("Image check", len(dec), len(dec), "images", "ok")
     print(f"[lab] verifying {len(qs)} questions against the source", flush=True)
     progress("Verify questions", 0, len(qs), "questions"); results = verify_all(qs, src); progress("Verify questions", len(qs), len(qs), "questions", "ok")
-    budget = vision.Budget(out_dir)
-    dec = imgmod.classify_dir(out_dir, budget if use_vision and budget.available() else None)
-    progress("Image check", len(dec), len(dec), "images", "ok")
     flagged = [k for k, v in results.items() if v["status"] == "flagged"]
     log = []
     if flagged:

@@ -22,7 +22,17 @@ def main():
             importlib.import_module(m); add(f"import {m}", True, "", req)
         except Exception as e:
             add(f"import {m}", False, ("optional, fallback pypdf+poppler" if m == "pymupdf" else str(e)[:80]), req)
-    for b in ("pdftoppm", "pdftohtml", "pdftotext", "pdfinfo"): cmd_ok(b)
+    for b in ("pdftoppm", "pdftohtml", "pdftotext", "pdfinfo", "pdfimages"): cmd_ok(b)
+    try:
+        import pymupdf; have_fitz = True
+    except Exception:
+        try:
+            import fitz; have_fitz = True
+        except Exception:
+            have_fitz = False
+    have_mutool = bool(shutil.which("mutool"))
+    add("embedded-image extraction (pymupdf or mutool)", have_fitz or have_mutool, ("pymupdf" if have_fitz else "mutool") if (have_fitz or have_mutool) else "neither found: PDF images would be silently skipped; pip install pymupdf or apt install mupdf-tools")
+    cmd_ok("mutool", False, "optional fallback when pymupdf is missing"); cmd_ok("qpdf", False)
     t = cmd_ok("tesseract", True, "OCR jobs would be 'blocked: tesseract missing'")
     if t:
         langs = subprocess.run(["tesseract", "--list-langs"], capture_output=True, text=True).stdout

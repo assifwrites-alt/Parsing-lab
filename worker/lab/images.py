@@ -64,15 +64,16 @@ def classify_dir(out_dir, budget=None, files=None, repeat_threshold=3):
             res[rel] = {"decision": "uncertain", "reason": f"unreadable image: {e}", "method": "error"}; continue
         d, why, conf = heuristic(f, p); m = "heuristic"
         res[rel] = {"decision": d, "reason": why, "method": m, "confidence": conf, "size": [f["w"], f["h"]], "hash": _phash(p)}
-        q = re.search(r"_q(\d+)_", os.path.basename(p)); res[rel]["question"] = int(q.group(1)) if q else None
+        q = re.search(r"_q(\d+)_", os.path.basename(p)); res[rel]["question"] = (int(q.group(1)) or None) if q else None
     # repeated across questions -> logo/watermark
     by_hash = {}
     for rel, d in res.items():
         if d.get("hash") and d["decision"] != "noise": by_hash.setdefault(d["hash"], []).append(rel)
     for h, rels in by_hash.items():
         qs = {res[r].get("question") for r in rels}
-        if len(rels) >= repeat_threshold and len(qs) >= repeat_threshold:
-            for r in rels: res[r].update({"decision": "noise", "reason": f"identical image repeated in {len(qs)} questions (logo/watermark)", "method": "repetition"})
+        pgs = {(re.search(r"_p(\d+)_", os.path.basename(r)) or [None, r])[1] for r in rels}
+        if len(rels) >= repeat_threshold and max(len(qs), len(pgs)) >= repeat_threshold:
+            for r in rels: res[r].update({"decision": "noise", "reason": f"identical image repeated on {max(len(qs), len(pgs))} questions/pages (logo/watermark)", "method": "repetition"})
     # vision yes/no for uncertain ones
     if budget is not None:
         from . import vision

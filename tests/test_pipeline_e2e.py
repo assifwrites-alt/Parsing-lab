@@ -42,3 +42,13 @@ def test_vision_fix_with_mock_api(pdf, tmp_path):
     log = json.load(open(os.path.join(out, "_flags.json")))["fix_log"]; assert log and log[0]["flags_after"] == []
     n = Mock.calls; run(pdf, out, env, "--skip-parse"); assert Mock.calls == n   # cache: re-run costs nothing
     srv.shutdown()
+
+def test_image_boundaries_and_mapping(tmp_path):
+    pdf = str(tmp_path / "img.pdf"); make_sample.build_with_images(pdf, str(tmp_path / "w"))
+    out = str(tmp_path / "o"); v = run(pdf, out, {})
+    dec = json.load(open(os.path.join(out, "_image_decisions.json")))
+    assert sum(1 for d in dec.values() if d["decision"] == "noise") == 8, "8 repeated header logos must be noise"
+    useful = [d for d in dec.values() if d["decision"] == "useful"]
+    assert len(useful) == 1 and useful[0]["question"] == 2 and useful[0]["placement"] == "stem"
+    q2 = [q for q in v["questions"] if q["number"] == 2][0]
+    assert len(q2["images"]) == 1 and all(q["status"] == "verified" for q in v["questions"]), [(q["number"], [f["code"] for f in q["flags"]]) for q in v["questions"]]

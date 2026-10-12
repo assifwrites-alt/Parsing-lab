@@ -8,3 +8,5 @@ libglib2.0-0
 fonts-dejavu-core
 curl
 git
+mupdf-tools
+qpdf
