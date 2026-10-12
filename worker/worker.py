@@ -175,8 +175,9 @@ def process(job):
         download_pdf(job, pdf)
         is_html0 = pname.lower().endswith((".html", ".htm", ".mhtml", ".mht"))
         pr = probe(pdf) if not is_html0 else {"pages": 0, "text_chars_p1_5": 0, "images_p1_5": 0, "sample": ""}
-        mode = "html" if is_html0 else pick_mode(pr)
-        header = (f"file={pname} size={os.path.getsize(pdf)} mode={mode} pages={pr['pages']} text_chars(p1-5)={pr['text_chars_p1_5']} "
+        opts = job.get("opts") or {}
+        mode = "html" if is_html0 else (opts["mode"] if opts.get("mode") in ("text", "amedex") else pick_mode(pr))
+        header = (f"opts={opts} file={pname} size={os.path.getsize(pdf)} mode={mode} pages={pr['pages']} text_chars(p1-5)={pr['text_chars_p1_5']} "
                   f"images(p1-5)={pr['images_p1_5']}\n---- text sample (page 1-5) ----\n{pr['sample']}")
         hub_log(jid, header, os.path.join(base, "run.log"))
         if mode == "amedex" and not shutil.which("tesseract"):
@@ -185,7 +186,7 @@ def process(job):
         log = open(os.path.join(base, "run.log"), "wb")
         t0 = time.time(); pct = 0.0; last_sent = 0
         is_html = pname.lower().endswith((".html", ".htm", ".mhtml", ".mht"))
-        cmd = [sys.executable, "-I", "-u", os.path.join(HERE, "html_parse.py"), pdf, os.path.join(base, "out")] if is_html else [sys.executable, "-u", os.path.join(HERE, "run_lab.py"), pdf, os.path.join(base, "out"), "--mode", mode]
+        cmd = [sys.executable, "-I", "-u", os.path.join(HERE, "html_parse.py"), pdf, os.path.join(base, "out")] if is_html else [sys.executable, "-u", os.path.join(HERE, "run_lab.py"), pdf, os.path.join(base, "out"), "--mode", mode] + (["--limit", str(int(opts["limit"]))] if opts.get("limit") else []) + (["--no-vision"] if opts.get("vision") is False else [])
         proc = subprocess.Popen(cmd, env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
         while proc.poll() is None:
             time.sleep(3)

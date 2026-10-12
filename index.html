@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#4f46e5">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
 <title>Dr Harry Lab</title>
 <meta name="description" content="PDF upload karo, parsing ka live progress dekho, result download karo.">
 <style>
@@ -25,6 +27,18 @@
   --ok:#34d399;--ok-soft:#0f3a2c;--warn:#fbbf24;--warn-soft:#3b2d0c;--bad:#f87171;--bad-soft:#431a1a;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px -14px rgba(0,0,0,.6);color-scheme:dark}
 [hidden]{display:none!important}
+.toast{position:fixed;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;z-index:60;box-shadow:var(--shadow);max-width:92vw}
+.opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:10px;align-items:end}
+.opts label{font-size:12px;color:var(--muted);display:grid;gap:4px}
+.opts input[type=number],.opts input[type=search],.fbar input,.srch input{min-height:44px;border:1px solid var(--line);background:var(--soft);color:var(--ink);border-radius:12px;font:inherit;padding:0 12px;width:100%}
+.fbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-bottom:10px}
+.bars{display:grid;gap:6px;margin:10px 0}
+.bar{display:grid;grid-template-columns:150px minmax(0,1fr) 34px;gap:8px;align-items:center;font-size:13px;border:0;background:none;color:var(--ink);cursor:pointer;text-align:left;padding:2px 0}
+.bar.on b{color:var(--brand-ink)}.bar i{display:block;height:8px;border-radius:99px;background:linear-gradient(90deg,var(--warn),var(--bad))}.bar span{font-variant-numeric:tabular-nums;text-align:right;color:var(--muted)}
+.bar b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kbd{font-size:12px;color:var(--muted);margin:8px 0 0}.kbd kbd{border:1px solid var(--line);border-radius:6px;padding:0 5px;background:var(--soft);font-family:var(--mono)}
+.srch{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-bottom:10px}
+@media (max-width:520px){.bar{grid-template-columns:100px minmax(0,1fr) 30px}}
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 var(--sans);overflow-x:hidden;padding-bottom:max(28px,env(safe-area-inset-bottom))}
 a{color:var(--brand-ink)}
@@ -143,7 +157,7 @@ textarea{width:100%;min-height:90px;font:inherit;font-size:15px;color:var(--ink)
   <div class="brand"><b>Dr Harry Lab</b><small>Parsing &amp; scraping console</small></div>
   <div class="sp"></div>
   <div class="chips"><span class="pill" id="hubState"><i></i>hub: dhoondh raha hoon…</span><span class="pill" id="wkState"><i></i>worker: ?</span><span class="pill" id="brState"><i></i>Claude: ?</span></div>
-  <button class="tbtn" id="healthBtn" type="button">Health</button><button class="tbtn" id="theme" type="button" aria-label="Theme badlo">Theme</button>
+  <button class="tbtn" id="notifBtn" type="button" title="Job khatam hone par alert">Alerts</button><button class="tbtn" id="healthBtn" type="button">Health</button><button class="tbtn" id="theme" type="button" aria-label="Theme badlo">Theme</button>
 </div></header>
 
 <div class="login" id="login" hidden><form class="card" id="loginForm" autocomplete="off"><div class="logo" aria-hidden="true" style="margin-bottom:10px">DH</div><h1 style="margin:0 0 4px;font-size:22px">Dr Harry Lab</h1><p class="note" style="margin:0 0 14px" id="loginMsg">Login: apna hub token daalo.</p>
@@ -157,13 +171,18 @@ textarea{width:100%;min-height:90px;font:inherit;font-size:15px;color:var(--ink)
   <div class="grid">
     <div style="display:grid;gap:16px;min-width:0">
       <div class="drop" id="drop" role="button" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4m0 0L7 9m5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg><b>PDF / HTML yahan chhodo ya dabao</b><small>PDF ya HTML/MHTML, kitni bhi badi; chhote tukdon mein upload hoti hai</small></div>
+      <details class="card" id="upOpts" style="padding:12px 16px"><summary style="cursor:pointer;font-weight:600">Upload options <span class="note" id="optSum" style="margin:0 0 0 8px"></span></summary>
+        <div class="opts"><label>Parser mode<select id="oMode"><option value="">Auto (PDF dekh kar)</option><option value="text">Text-layer (Question N of M)</option><option value="amedex">Screenshot OCR (amedex)</option></select></label>
+        <label>Vision fix (API credits lagte hain)<select id="oVis"><option value="1">On (agar key ho)</option><option value="0">Off</option></select></label>
+        <label>Sirf pehle N sawal/pages (test run)<input type="number" id="oLim" min="0" max="5000" placeholder="khali = sab"></label></div>
+        <p class="note">Ye options agli upload par lagte hain. Mode galat chuna to result flag hoga, tab Auto par wapas jao.</p></details>
       <input type="file" id="pfile" accept="application/pdf,.pdf,.html,.htm,.mhtml,.mht" multiple hidden>
       <section class="card pj" id="cur" aria-live="polite"><p class="empty">Abhi koi file nahi. Upar PDF chhodo.</p></section>
       <section class="card" id="outBox" hidden></section>
     </div>
 
     <div style="display:grid;gap:16px;min-width:0">
-      <section class="card"><h2>Files</h2><div class="jl" id="jobList"><p class="empty">Koi file nahi</p></div></section>
+      <section class="card"><h2>Files</h2><div class="fbar"><input type="search" id="jSearch" placeholder="File dhoondo…" aria-label="File search"><select id="jStat" aria-label="status filter"><option value="">Sab</option><option value="running">Chal rahi</option><option value="queued">Line mein</option><option value="done">Mukammal</option><option value="failed">Fail</option></select></div><div class="jl" id="jobList"><p class="empty">Koi file nahi</p></div></section>
       <section class="card" id="claudeBox">
         <h2>Claude</h2>
         <div class="chat" id="cmds"></div>
@@ -254,9 +273,11 @@ function kpis(state){
 }
 let SEL=null;
 function jobList(state,cur){
-  const L=[...state.jobs].sort((a,b)=>(b.updated||0)-(a.updated||0)).slice(0,12);
+  const fq=($("jSearch").value||"").toLowerCase(),fs=$("jStat").value;
+  const L=[...state.jobs].filter(x=>(!fs||x.status===fs)&&(!fq||String(x.name).toLowerCase().includes(fq))).sort((a,b)=>(b.updated||0)-(a.updated||0)).slice(0,30);
   $("jobList").innerHTML=L.length?L.map(x=>`<button type="button" class="jr ${cur&&x.id===cur.id?"sel":""}" data-sel="${esc(x.id)}"><b>${esc(x.name)}</b><span class="st ${esc(x.status)}">${esc(x.status)}</span><span>${sz(x.size||0)}</span><span>${(+x.pct||0).toFixed(0)}%</span></button>`).join(""):'<p class="empty">Koi file nahi</p>';
 }
+$("jSearch").oninput=$("jStat").onchange=()=>{if(lastState)jobList(lastState,pickCurrent(lastState.jobs))};
 function chat(state){
   const el=$("cmds"),atBottom=el.scrollHeight-el.scrollTop-el.clientHeight<40;
   el.innerHTML=state.cmds.map(c=>`<div class="msg ${c.by==="claude"?"cl":"me"}"><small>${c.by==="claude"?"Claude":"Tum"} · ${new Date(c.ts).toTimeString().slice(0,5)}</small>${esc(c.text)}</div>`).join("")||'<p class="empty" style="grid-column:1">Abhi koi message nahi</p>';
@@ -298,13 +319,17 @@ async function poll(){
   if(!j.ok){setPill($("hubState"),"bad",j.error||"hub error");return}
   lastState=j;
   const cur=(SEL&&j.jobs.find(x=>x.id===SEL))||pickCurrent(j.jobs);
-  render(cur,j);kpis(j);jobList(j,cur);chat(j);
+  notifyChanges(j);render(cur,j);kpis(j);jobList(j,cur);chat(j);
   const w=j.workers.filter(x=>x.ago<60);
   w.length?setPill($("wkState"),"ok","worker online"):setPill($("wkState"),"warn","worker offline");
   const bo=j.bridge_ago!=null&&j.bridge_ago<60;
   bo?setPill($("brState"),"ok","Claude online (Termux)"):j.agent?setPill($("brState"),"ok","Claude online (site)"):setPill($("brState"),"warn","Claude offline: Termux bridge chalao");
 }
 
+$("notifBtn").onclick=async()=>{
+  if(!("Notification" in window)){toast("Is browser mein alerts nahi");return}
+  const p=await Notification.requestPermission();toast(p==="granted"?"Alerts on: job khatam hone par batayenge":"Alerts allow nahi hue")
+};
 const REPO="assifwrites-alt/Parsing-lab";
 function ctxText(extra){
   const j=lastState?((SEL&&lastState.jobs.find(x=>x.id===SEL))||pickCurrent(lastState.jobs)):null;
@@ -325,6 +350,8 @@ function openClaude(text){
   window.open("https://claude.ai/new?q="+encodeURIComponent(text.slice(0,6000)),"_blank","noopener");
 }
 document.addEventListener("change",e=>{
+  if(e.target.id==="exSel"&&e.target.value){const[k,w]=e.target.value.split(":");exportQs(k,w==="ok");e.target.value="";return}
+  if(e.target.id==="qSearch"){OUT.q=e.target.value;const v=visible();if(v.length)OUT.qi=v[0];drawOut();return}
   if(e.target.id==="qSel"){OUT.qi=+e.target.value;OUT.edit=false;drawOut()}
   if(e.target.id==="fSel"){OUT.filter=e.target.value;OUT.edit=false;const v=visible();if(v.length&&!v.includes(OUT.qi))OUT.qi=v[0];drawOut()}
 });
@@ -336,6 +363,8 @@ document.addEventListener("click",async e=>{
   if(b.dataset.rq){await call("requeue",{id:b.dataset.rq});poll()}
   if(b.dataset.fix){try{await navigator.clipboard.writeText(ctxText(""));b.textContent="Copy ho gaya: Claude chat mein paste karo"}catch(x){b.textContent="Copy nahi hua"}return}
   if(b.dataset.view){openJson(b.dataset.view);return}
+  if(b.id==="qGo"){OUT.q=$("qSearch").value;const v=visible();if(v.length)OUT.qi=v[0];drawOut();return}
+  if(b.dataset.code!==undefined){OUT.code=b.dataset.code;const v=visible();if(v.length)OUT.qi=v[0];drawOut();return}
   if(b.dataset.qn){const v=visible(),p=v.indexOf(OUT.qi),np=Math.max(0,Math.min(v.length-1,(p<0?0:p)+(+b.dataset.qn)));OUT.qi=v[np]!=null?v[np]:OUT.qi;OUT.edit=false;drawOut();return}
   if(b.dataset.appr){await review(b.dataset.appr,"approve");return}
   if(b.dataset.reset){await review(b.dataset.reset,"reset");return}
@@ -346,6 +375,36 @@ document.addEventListener("click",async e=>{
   if(b.dataset.copy){const t=($("errTxt")||{}).textContent||"";try{await navigator.clipboard.writeText(t);b.textContent="Copy ho gaya"}catch(x){b.textContent="Copy nahi hua"}}
 });
 
+// upload options (kept in this browser)
+function getOpts(){const m=$("oMode").value,v=$("oVis").value==="0"?false:true,l=parseInt($("oLim").value,10)||0;return{mode:m,vision:v,limit:l>0?l:0}}
+function optSave(){const o=getOpts();LS("drh-opts",JSON.stringify(o));$("optSum").textContent=[o.mode||"auto",o.vision?"vision on":"vision off",o.limit?"limit "+o.limit:""].filter(Boolean).join(" · ")}
+try{const o=JSON.parse(LS("drh-opts")||"{}");$("oMode").value=o.mode||"";$("oVis").value=o.vision===false?"0":"1";$("oLim").value=o.limit||""}catch(e){}
+["oMode","oVis","oLim"].forEach(i=>$(i).addEventListener("change",optSave));optSave();
+// toast + browser notification when a job finishes
+function toast(t){const e=document.createElement("div");e.className="toast";e.textContent=t;document.body.appendChild(e);setTimeout(()=>e.remove(),5000)}
+const PREV={};
+function notifyChanges(state){
+  for(const j of state.jobs){
+    const p=PREV[j.id];PREV[j.id]=j.status;
+    if(p&&p!==j.status&&(j.status==="done"||j.status==="failed")){
+      const m=(j.status==="done"?"Mukammal: ":"Fail: ")+j.name;toast(m);
+      try{if("Notification" in window&&Notification.permission==="granted")new Notification("Dr Harry Lab",{body:m})}catch(e){}
+    }
+  }
+  const r=state.jobs.find(x=>x.status==="running");document.title=r?`${(+r.pct||0).toFixed(0)}% · Dr Harry Lab`:"Dr Harry Lab";
+}
+// keyboard shortcuts in the viewer (ignored while typing)
+document.addEventListener("keydown",e=>{
+  if(OUT.id===null||!qList().length||e.ctrlKey||e.metaKey||e.altKey)return;
+  const t=(e.target&&e.target.tagName)||"";if(/INPUT|TEXTAREA|SELECT/.test(t))return;
+  const k=e.key;
+  if(k==="/"){const s=$("qSearch");if(s){e.preventDefault();s.focus()}return}
+  if(OUT.edit)return;
+  if(k==="ArrowRight"||k==="ArrowLeft"){const v=visible(),p=v.indexOf(OUT.qi),np=Math.max(0,Math.min(v.length-1,(p<0?0:p)+(k==="ArrowRight"?1:-1)));if(v.length){OUT.qi=v[np];drawOut()}return}
+  const q=qList()[OUT.qi];if(!q)return;
+  if(k==="a"||k==="A")review(q.id,"approve");
+  if(k==="e"||k==="E"){OUT.edit=true;drawOut()}
+});
 // chunked upload
 const CH=4*1024*1024;
 async function up(f){
@@ -356,7 +415,7 @@ async function up(f){
   for(let i=0;i<total;i++){
     let ok=false,err="";
     for(let t=0;t<4&&!ok;t++){
-      const q=new URLSearchParams({a:"upload",id,name:f.name,idx:i,total,size:f.size});
+      const q=new URLSearchParams({a:"upload",id,name:f.name,idx:i,total,size:f.size});const O=getOpts();if(O.mode)q.set("mode",O.mode);if(O.vision===false)q.set("vision","0");if(O.limit)q.set("limit",O.limit);
       try{const r=await fetch(api()+"?"+q,{method:"POST",headers:{"X-Token":tok()},body:f.slice(i*CH,(i+1)*CH)});const j=await r.json();if(j.ok)ok=true;else err=j.error||"error"}catch(e){err="network"}
       if(!ok)await new Promise(r=>setTimeout(r,1500*(t+1)));
     }
@@ -419,14 +478,49 @@ async function sendClaude(extra){
 }
 
 // ---- output viewer: student_view.json (verified / flagged / needs_human) + human review ----
-const OUT={id:null,files:[],cur:null,data:null,rawText:"",qi:0,raw:false,err:"",rev:{},filter:"attn",edit:false};
+const OUT={id:null,files:[],cur:null,data:null,rawText:"",qi:0,raw:false,err:"",rev:{},filter:"attn",edit:false,q:"",code:""};
 const qList=()=>OUT.data&&Array.isArray(OUT.data.questions)?OUT.data.questions:[];
 const qStem=q=>q.stem!=null?q.stem:q.text;
 const stCls=s=>s==="needs_human"?"needs_human":s==="approved_by_human"||s==="edited_by_human"?"human":/^verified/.test(s||"")?"verified":"";
 const stTxt=s=>({approved_by_human:"approved by you",edited_by_human:"edited by you",needs_human:"needs human","verified (vision-fixed)":"verified (vision-fixed)"}[s]||s||"");
 const effSt=q=>(OUT.rev[q.id]&&OUT.rev[q.id].status)||q.status||"";
 const isOk=s=>/^verified|_by_human$/.test(s||"");
-function visible(){const qs=qList();return OUT.filter==="all"?qs.map((q,i)=>i):qs.map((q,i)=>i).filter(i=>!isOk(effSt(qs[i])))}
+const qText=q=>(qStem(q)+" "+(q.options||[]).map(o=>o.text).join(" ")+" "+(typeof q.explanation==="string"?q.explanation:"")).toLowerCase();
+function visible(){
+  const qs=qList(),s=(OUT.q||"").trim().toLowerCase();
+  return qs.map((q,i)=>i).filter(i=>{const q=qs[i];
+    if(OUT.filter!=="all"&&isOk(effSt(q)))return false;
+    if(OUT.code&&!(q.flags||[]).some(f=>(f.code||f)===OUT.code))return false;
+    if(s&&!(String(q.number)===s||qText(q).includes(s)))return false;
+    return true})
+}
+// effective question = machine output + your review edits
+const effQ=q=>Object.assign({},q,(OUT.rev[q.id]&&OUT.rev[q.id].edit)||{});
+function dl(name,mime,text){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+text],{type:mime+";charset=utf-8"}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
+const clean=o=>String(o==null?"":o).replace(/^\s*[A-H][\.\)]\s+/,"");
+const exp=q=>typeof q.explanation==="string"?q.explanation:"";
+function exportQs(kind,onlyOk){
+  const base=OUT.cur?OUT.cur.replace(/\.json$/i,""):"questions";
+  let qs=qList().filter(q=>!onlyOk||isOk(effSt(q))).map(effQ);
+  if(!qs.length){toast("Export ke liye koi sawal nahi (verified/approved filter)");return}
+  const L="ABCDEFGH";
+  if(kind==="csv"){
+    const q2=s=>'"'+String(s==null?"":s).replace(/"/g,'""')+'"';
+    const rows=[["number","status","question","A","B","C","D","E","F","correct","explanation"]];
+    qs.forEach(q=>{const o=q.options||[];rows.push([q.number,effSt(q),qStem(q),...Array.from({length:6},(_, i)=>o[i]?clean(o[i].text):""),String(q.correct_answer_id||"").toUpperCase(),exp(q)])});
+    dl(base+".csv","text/csv",rows.map(r=>r.map(q2).join(",")).join("\r\n"));
+  }else if(kind==="anki"){
+    const t=s=>String(s==null?"":s).replace(/[\t\r\n]+/g," ").trim();
+    dl(base+"_anki.tsv","text/tab-separated-values",qs.map(q=>{const o=q.options||[];
+      const front=t(qStem(q))+"<br><br>"+o.map((x,i)=>L[i]+". "+t(clean(x.text))).join("<br>");
+      const c=o.findIndex(x=>x.id===q.correct_answer_id);
+      return [front,(c>=0?L[c]+". "+t(clean(o[c].text)):"")+"<br><br>"+t(exp(q))].join("\t")}).join("\n"));
+  }else{
+    const md=kind==="md";
+    dl(base+(md?".md":".txt"),"text/plain",qs.map(q=>{const o=q.options||[];
+      return (md?"### Q"+q.number+"\n\n":"Q"+q.number+". ")+qStem(q)+"\n"+o.map((x,i)=>(md?"- ":"")+L[i]+") "+clean(x.text)+(x.id===q.correct_answer_id?"  ✓":"")).join("\n")+"\n\nAnswer: "+String(q.correct_answer_id||"").toUpperCase()+(exp(q)?"\nExplanation: "+exp(q):"")+"\n"}).join("\n"));
+  }
+}
 function hideOut(){if(OUT.id===null)return;OUT.id=null;$("outBox").hidden=true;$("outBox").innerHTML=""}
 async function ensureOut(j){
   if(OUT.id===j.id)return;
@@ -484,6 +578,10 @@ function drawOut(){
     qs.forEach(q=>{const s=effSt(q);if(s==="verified")c.ok++;else if(s==="verified (vision-fixed)")c.fixed++;else if(/_by_human$/.test(s))c.hum++;else c.attn++});
     h+=`<div class="tiles"><div class="tile"><b>${qs.length}</b><span>sawal</span></div><div class="tile"><b class="ok-t">${c.ok}</b><span>verified</span></div><div class="tile"><b>${c.fixed}</b><span>vision-fixed</span></div><div class="tile"><b class="${c.attn?"bad-t":""}">${c.attn}</b><span>dekhna baqi</span></div><div class="tile"><b>${c.hum}</b><span>aapne dekhe</span></div></div>`;
     const v=visible();
+    const codes={};qs.forEach(q=>{if(isOk(effSt(q)))return;(q.flags||[]).forEach(f=>{const k=f.code||f;codes[k]=(codes[k]||0)+1})});
+    const cl=Object.entries(codes).sort((a,b)=>b[1]-a[1]).slice(0,8),mx=cl.length?cl[0][1]:1;
+    if(cl.length)h+='<div class="bars" aria-label="flag breakdown">'+cl.map(([k,n])=>`<button type="button" class="bar ${OUT.code===k?"on":""}" data-code="${esc(k)}" title="Sirf ye flag dikhao"><b>${esc(k)}</b><div><i style="width:${Math.max(4,n/mx*100)}%"></i></div><span>${n}</span></button>`).join("")+(OUT.code?'<button type="button" data-code="" class="pill">Filter hatao</button>':"")+'</div>';
+    h+=`<div class="srch"><input type="search" id="qSearch" value="${esc(OUT.q)}" placeholder="Sawal number ya text dhoondo…" aria-label="Sawal search"><button type="button" id="qGo">Dhoondo</button></div>`;
     h+=`<div class="acts" style="margin:0 0 6px"><select id="fSel" aria-label="filter" style="max-width:260px"><option value="attn" ${OUT.filter==="attn"?"selected":""}>Sirf jo dekhna baqi hai (${c.attn})</option><option value="all" ${OUT.filter==="all"?"selected":""}>Sab sawal</option></select></div>`;
     if(!v.length)h+='<p class="empty">Sab sawal verified ya review ho chuke hain.</p>';
     else{
@@ -494,11 +592,13 @@ function drawOut(){
   }
   const dl=[];
   if(OUT.data)dl.push(`<a href="${esc(api()+"?"+new URLSearchParams({a:"final",id:OUT.id,token:tok()}))}">Final JSON (aapke review ke saath)</a>`);
+  if(qs.length)dl.push('<select id="exSel" aria-label="Export" style="max-width:230px"><option value="">Export karo…</option><option value="csv:ok">CSV (verified + approved)</option><option value="anki:ok">Anki TSV (verified + approved)</option><option value="md:ok">Markdown (verified + approved)</option><option value="txt:ok">Plain text (verified + approved)</option><option value="csv:all">CSV (sab, flagged bhi)</option></select>');
   if(hasFile("viewer.html"))dl.push(`<a href="${esc(fileUrl("viewer.html",true))}">viewer.html</a>`);
   if(hasFile("_flags_report.md"))dl.push(`<a href="${esc(fileUrl("_flags_report.md",true))}">Flags report</a>`);
   if(hasFile("run_summary.md"))dl.push(`<a href="${esc(fileUrl("run_summary.md",true))}">Run summary</a>`);
   if(OUT.data)dl.push(`<button type="button" data-raw="1">${OUT.raw?"Raw JSON chhupao":"Raw JSON dekho"}</button>`);
   if(dl.length)h+=`<div class="acts">${dl.join("")}</div>`;
+  if(qs.length)h+='<p class="kbd"><kbd>←</kbd> <kbd>→</kbd> sawal badlo · <kbd>A</kbd> approve · <kbd>E</kbd> edit · <kbd>/</kbd> search</p>';
   if(OUT.raw)h+=`<pre class="raw">${esc(OUT.rawText.length>15000?OUT.rawText.slice(0,15000)+"\n… (baqi download karke dekho)":OUT.rawText)}</pre>`;
   box.innerHTML=h;
 }

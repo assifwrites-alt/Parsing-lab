@@ -73,7 +73,9 @@ case 'upload': {   // POST raw chunk: id, name, idx, total, size
     if ($have === $total) {
         if (!assemble($dir, $total, "$DATA/files/$id.pdf")) bad('jodne mein dikkat', 500);
         $sz = filesize("$DATA/files/$id.pdf");
-        jmod($JOBS, function ($j) use ($id, $name, $sz) { $j[$id] = ['id' => $id, 'name' => $name, 'size' => $sz, 'status' => 'queued', 'stage' => 'upload ho gayi, worker ka intezar', 'pct' => 0, 'created' => time(), 'updated' => time(), 'jobs' => []]; return $j; });
+        $opts = []; $m = strtolower((string)($_GET['mode'] ?? '')); if (in_array($m, ['text', 'amedex'], true)) $opts['mode'] = $m;
+        if (($_GET['vision'] ?? '') === '0') $opts['vision'] = false; $lim = (int)($_GET['limit'] ?? 0); if ($lim > 0 && $lim <= 5000) $opts['limit'] = $lim;
+        jmod($JOBS, function ($j) use ($id, $name, $sz, $opts) { $j[$id] = ['id' => $id, 'name' => $name, 'size' => $sz, 'status' => 'queued', 'stage' => 'upload ho gayi, worker ka intezar', 'pct' => 0, 'created' => time(), 'updated' => time(), 'jobs' => [], 'opts' => $opts]; return $j; });
         $done = true;
     }
     out(['ok' => true, 'have' => $have, 'total' => $total, 'done' => $done]);
