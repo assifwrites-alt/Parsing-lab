@@ -5,19 +5,23 @@
 // Included by api.php after token auth; direct access is blocked.
 if (!isset($DATA)) { http_response_code(403); exit; }
 
-const AG_FILES = ['m2.py', 'worker.py', 'html_parse.py'];
+const AG_FILES = ['m2.py', 'worker.py', 'html_parse.py', 'run_lab.py', 'doctor.py'];
 
 function ag_src(): string { global $DATA; $d = "$DATA/src"; if (!is_dir($d)) @mkdir($d, 0775, true); return $d; }
-function ag_seed(): void {
-    $src = ag_src();
-    if (is_file("$src/m2.py")) return;
-    $z = new ZipArchive(); $zip = __DIR__ . '/worker.zip';
-    if (is_file($zip) && $z->open($zip) === true) { $z->extractTo($src); $z->close(); }
+function ag_seed(): void {   // copy files from the repo's worker.zip that are not in data/src yet; never overwrites Claude's edits
+    $src = ag_src(); $z = new ZipArchive(); $zip = __DIR__ . '/worker.zip';
+    if (!is_file($zip) || $z->open($zip) !== true) return;
+    for ($i = 0; $i < $z->numFiles; $i++) {
+        $n = $z->getNameIndex($i); if (substr($n, -1) === '/' || strpos($n, '..') !== false || is_file("$src/$n")) continue;
+        @mkdir(dirname("$src/$n"), 0775, true); file_put_contents("$src/$n", $z->getFromIndex($i));
+    }
+    $z->close();
 }
 function ag_rebuild_zip(): void {
     global $DATA; $src = ag_src(); $out = "$DATA/worker_live.zip"; $tmp = "$out.tmp";
     $z = new ZipArchive(); if ($z->open($tmp, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) return;
-    foreach (['worker.py', 'm2.py', 'html_parse.py', 'setup_linux.sh'] as $f) if (is_file("$src/$f")) $z->addFile("$src/$f", $f);
+    foreach (['worker.py', 'run_lab.py', 'm2.py', 'html_parse.py', 'doctor.py', 'make_sample.py', 'setup_linux.sh'] as $f) if (is_file("$src/$f")) $z->addFile("$src/$f", $f);
+    foreach (glob("$src/lab/*.py") ?: [] as $f) $z->addFile($f, 'lab/' . basename($f));
     $z->close(); @rename($tmp, $out);
 }
 function ag_pycheck(string $file): ?string {   // null = ok or unable to check; string = syntax error text
@@ -26,7 +30,10 @@ function ag_pycheck(string $file): ?string {   // null = ok or unable to check; 
     if ($o === null || $o === false || $o === '') return null;
     return strpos($o, 'OK') === 0 ? null : substr($o, -600);
 }
-function ag_file(string $n): ?string { return in_array($n, AG_FILES, true) ? ag_src() . '/' . $n : null; }
+function ag_file(string $n): ?string {
+    if (in_array($n, AG_FILES, true) || preg_match('#^lab/[a-z_]+\.py$#', $n)) return ag_src() . '/' . $n;
+    return null;
+}
 
 function ag_tool(string $name, array $in, array &$edited): string {
     global $DATA, $JOBS;
@@ -54,11 +61,12 @@ function ag_tool(string $name, array $in, array &$edited): string {
         $s = (string)file_get_contents($f); $cnt = substr_count($s, $old);
         if ($cnt !== 1) return "old text $cnt jagah mila; ek hi jagah milna chahiye, thora lamba old text do";
         $bk = ag_src() . '/.bak'; if (!is_dir($bk)) @mkdir($bk, 0775, true);
-        copy($f, $bk . '/' . basename($f) . '.' . date('Ymd-His'));
+        @mkdir(dirname($f), 0775, true);
+        copy($f, $bk . '/' . str_replace('/', '_', ($in['file'] ?? 'f')) . '.' . date('Ymd-His'));
         file_put_contents($f, str_replace($old, $new, $s));
         if (substr($f, -3) === '.py') { $err = ag_pycheck($f); if ($err !== null) { file_put_contents($f, $s); return "syntax error, edit wapas le liya:\n$err"; } }
-        $edited[basename($f)] = true;
-        @file_put_contents("$DATA/edits.log", "\n=== " . date('Y-m-d H:i:s') . ' ' . basename($f) . "\n--- OLD\n$old\n+++ NEW\n$new\n", FILE_APPEND | LOCK_EX);
+        $edited[(string)$in['file']] = true;
+        @file_put_contents("$DATA/edits.log", "\n=== " . date('Y-m-d H:i:s') . ' ' . $in['file'] . "\n--- OLD\n$old\n+++ NEW\n$new\n", FILE_APPEND | LOCK_EX);
         return 'edit ho gaya';
     }
     return 'unknown tool';
@@ -82,13 +90,13 @@ function ag_run(string $key, string $model, string $text): string {
     $T = [
       ['name' => 'list_jobs', 'description' => 'Latest jobs with status/progress/error.', 'input_schema' => $obj + ['properties' => new stdClass()]],
       ['name' => 'read_log', 'description' => 'Worker diagnostics log for a job id (probe info + end of run.log).', 'input_schema' => $obj + ['properties' => ['id' => ['type' => 'string']], 'required' => ['id']]],
-      ['name' => 'read_file', 'description' => 'Read lines of m2.py, worker.py or html_parse.py (max 250 lines per call).', 'input_schema' => $obj + ['properties' => ['file' => ['type' => 'string'], 'start' => ['type' => 'integer'], 'end' => ['type' => 'integer']], 'required' => ['file']]],
+      ['name' => 'read_file', 'description' => 'Read lines of an editable file e.g. m2.py, worker.py, lab/verify.py (max 250 lines per call).', 'input_schema' => $obj + ['properties' => ['file' => ['type' => 'string'], 'start' => ['type' => 'integer'], 'end' => ['type' => 'integer']], 'required' => ['file']]],
       ['name' => 'grep', 'description' => 'Case-insensitive literal search in one of the editable files.', 'input_schema' => $obj + ['properties' => ['file' => ['type' => 'string'], 'text' => ['type' => 'string']], 'required' => ['file', 'text']]],
       ['name' => 'replace', 'description' => 'Replace one exact, unique text block in m2.py/worker.py/html_parse.py. Syntax is checked; bad edits are reverted. Keep edits minimal.', 'input_schema' => $obj + ['properties' => ['file' => ['type' => 'string'], 'old' => ['type' => 'string'], 'new' => ['type' => 'string']], 'required' => ['file', 'old', 'new']]],
     ];
     $sys = "Tum Dr Harry Lab ke maintainer ho: ek PDF parsing hub (PHP) aur Colab worker. worker.py PDF par m2.py chalata hai (amedex = phone screenshots OCR, warna text-layer mode). "
          . "User Roman English mein likhta hai; jawab bhi chhota Roman English mein do. Pehle list_jobs/read_log se asli wajah dhoondho, phir sirf zarurat par minimal replace karo. "
-         . "Sirf m2.py, worker.py, html_parse.py edit ho sakti hain. Kuch aur karne ko kaha jaye to mana karo. Edit ke baad batao kya badla aur ye ke user Colab ka Cell 1 dobara chalaye (naya worker.zip) aur Dobara try dabaye.";
+         . "Sirf m2.py, worker.py, html_parse.py, run_lab.py, doctor.py aur lab/*.py edit ho sakti hain (lab/ = verify, images, vision_fix, report, pipeline). Kuch aur karne ko kaha jaye to mana karo. Edit ke baad batao kya badla aur ye ke user Colab ka Cell 1 dobara chalaye (naya worker.zip) aur Dobara try dabaye.";
     $msgs = [['role' => 'user', 'content' => $text]]; $edited = []; $t0 = time(); $final = '';
     for ($turn = 0; $turn < 14 && time() - $t0 < 240; $turn++) {
         $r = ag_api($key, ['model' => $model, 'max_tokens' => 2000, 'system' => $sys, 'tools' => $T, 'messages' => $msgs]);

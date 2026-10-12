@@ -147,7 +147,7 @@ case 'cmds': {     // Claude: ?since=<ms>
 case 'clear': {    // purana data saaf: finished (done) jobs + unke files/results, commands log, purane workers. running/queued/failed bachte hain.
     $removed = 0; $ids = [];
     jmod($JOBS, function ($all) use (&$removed, &$ids) { foreach ($all as $k => $x) { if (($x['status'] ?? '') === 'done') { $ids[] = $k; unset($all[$k]); $removed++; } } return $all; });
-    foreach ($ids as $id) { $id = safe_id((string)$id); @unlink("$DATA/files/$id.pdf"); @unlink("$DATA/results/$id.zip"); @unlink("$DATA/logs/$id.log"); }
+    foreach ($ids as $id) { $id = safe_id((string)$id); @unlink("$DATA/files/$id.pdf"); @unlink("$DATA/results/$id.zip"); @unlink("$DATA/logs/$id.log"); @unlink("$DATA/review/$id.json"); }
     @file_put_contents($CMDS, '');
     $now = time(); jmod($WORK, function ($w) use ($now) { foreach ($w as $k => $x) { if ($now - (int)($x['seen'] ?? 0) > 600) unset($w[$k]); } return $w; });
     out(['ok' => true, 'removed_jobs' => $removed]);
@@ -197,6 +197,47 @@ case 'think': {    // run the on-hub Claude agent for web command ?id=<cmd id> (
 case 'workerzip': { // latest worker.zip (Claude-edited version if it exists, else the repo one)
     $f = is_file("$DATA/worker_live.zip") ? "$DATA/worker_live.zip" : __DIR__ . '/worker.zip'; if (!is_file($f)) bad('worker.zip nahi', 404);
     header('Content-Type: application/zip'); header('Content-Disposition: attachment; filename="worker.zip"'); header('Content-Length: ' . filesize($f)); readfile($f); exit;
+}
+case 'doctor': {   // worker posts its doctor.py report at startup
+    $j = json_decode(file_get_contents('php://input'), true); if (!is_array($j)) bad('doctor report samajh nahi aaya');
+    $n = safe_id((string)($_GET['worker'] ?? 'worker')) ?: 'worker';
+    jmod("$DATA/doctor.json", function ($x) use ($n, $j) { $x[$n] = ['ts' => time(), 'ok' => !empty($j['ok']), 'checks' => array_slice((array)($j['checks'] ?? []), 0, 80)]; return $x; });
+    out(['ok' => true]);
+}
+case 'health': {   // System health: what THIS host can really do + the workers' doctor reports
+    $dis = array_map('trim', explode(',', (string)ini_get('disable_functions')));
+    $can = fn(string $f) => function_exists($f) && !in_array($f, $dis, true);
+    $exec = $can('shell_exec') || $can('exec') || $can('proc_open');
+    $bins = []; foreach (['pdftoppm', 'pdftotext', 'tesseract', 'python3', 'gs', 'convert'] as $b) {
+        $p = $can('shell_exec') ? trim((string)@shell_exec('command -v ' . escapeshellarg($b) . ' 2>/dev/null')) : ''; $bins[$b] = $p !== '' ? $p : null; }
+    $free = @disk_free_space($DATA);
+    $h = ['php' => PHP_VERSION, 'zip' => class_exists('ZipArchive'), 'curl' => function_exists('curl_init'), 'exec_allowed' => $exec, 'binaries' => $bins,
+          'memory_limit' => ini_get('memory_limit'), 'max_execution_time' => ini_get('max_execution_time'), 'upload_max' => ini_get('upload_max_filesize'),
+          'data_writable' => is_writable($DATA), 'disk_free_gb' => $free ? round($free / 1073741824, 1) : null, 'claude_key_set' => !empty($CFG['anthropic_key']),
+          'heavy_parsing_on_this_host' => $exec && !empty($bins['pdftoppm']) && !empty($bins['tesseract'])];
+    @file_put_contents("$DATA/health_hub.json", json_encode($h + ['ts' => time()]));
+    $w = jload($WORK, []); $d = jload("$DATA/doctor.json", []); $now = time();
+    foreach ($d as $k => $x) $d[$k]['online'] = isset($w[$k]) && $now - (int)($w[$k]['seen'] ?? 0) < 60;
+    out(['ok' => true, 'hub' => $h, 'workers' => $d]);
+}
+case 'review': {   // human review overlay per job: GET ?id= ; POST {qid, action: approve|edit|reset, edit:{stem,options,correct_answer_id,explanation}}
+    $id = safe_id((string)($_GET['id'] ?? '')); if ($id === '') bad('id chahiye'); $f = "$DATA/review"; if (!is_dir($f)) @mkdir($f, 0775, true); $f .= "/$id.json";
+    if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
+        $j = json_decode(file_get_contents('php://input'), true); $qid = safe_id((string)($j['qid'] ?? '')); $act = (string)($j['action'] ?? ''); if ($qid === '' || !in_array($act, ['approve', 'edit', 'reset'], true)) bad('qid/action galat');
+        $e = []; if ($act === 'edit') { $in = (array)($j['edit'] ?? []); if (isset($in['stem'])) $e['stem'] = substr((string)$in['stem'], 0, 6000); if (isset($in['explanation'])) $e['explanation'] = substr((string)$in['explanation'], 0, 20000);
+            if (isset($in['correct_answer_id'])) $e['correct_answer_id'] = substr(preg_replace('/[^a-h]/', '', strtolower((string)$in['correct_answer_id'])), 0, 1);
+            if (isset($in['options']) && is_array($in['options'])) { $e['options'] = []; foreach (array_slice($in['options'], 0, 10) as $o) $e['options'][] = ['id' => substr(preg_replace('/[^a-h]/', '', strtolower((string)($o['id'] ?? ''))), 0, 1), 'text' => substr((string)($o['text'] ?? ''), 0, 2000), 'percentage' => is_numeric($o['percentage'] ?? null) ? (float)$o['percentage'] : null]; } }
+        jmod($f, function ($x) use ($qid, $act, $e) { if ($act === 'reset') unset($x[$qid]); else $x[$qid] = ['status' => $act === 'approve' ? 'approved_by_human' : 'edited_by_human', 'edit' => $e, 'ts' => time()]; return $x; });
+    }
+    out(['ok' => true, 'review' => jload($f, new stdClass())]);
+}
+case 'final': {    // student_view.json from the result zip merged with the human review overlay
+    $id = safe_id((string)($_GET['id'] ?? '')); $z = new ZipArchive(); if (!is_file("$DATA/results/$id.zip") || $z->open("$DATA/results/$id.zip") !== true) bad('result nahi', 404);
+    $raw = $z->getFromName('student_view.json'); $z->close(); $v = json_decode((string)$raw, true); if (!is_array($v)) bad('student_view.json nahi mili', 404);
+    $rv = jload("$DATA/review/$id.json", []);
+    foreach ($v['questions'] as &$q) { $r = $rv[$q['id'] ?? ''] ?? null; if (!$r) continue; $q['machine_status'] = $q['status']; $q['status'] = $r['status'];
+        foreach ((array)($r['edit'] ?? []) as $k => $val) $q[$k] = $val; } unset($q);
+    header('Content-Type: application/json; charset=utf-8'); header('Content-Disposition: attachment; filename="student_view_final.json"'); echo json_encode($v, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT); exit;
 }
 default: bad('a=? samajh nahi aaya', 404);
 }

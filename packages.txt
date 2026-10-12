@@ -1,0 +1,10 @@
+poppler-utils
+tesseract-ocr
+tesseract-ocr-eng
+ghostscript
+imagemagick
+libgl1
+libglib2.0-0
+fonts-dejavu-core
+curl
+git
