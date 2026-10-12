@@ -125,7 +125,7 @@ case 'download': { // browser download of the finished result zip
     header('Content-Type: application/zip'); header('Content-Length: ' . filesize($f)); header('Content-Disposition: attachment; filename="' . str_replace('"', '', $nm) . '_result.zip"'); readfile($f); exit;
 }
 case 'delete': {
-    $id = safe_id($_GET['id'] ?? ''); @unlink("$DATA/files/$id.pdf"); @unlink("$DATA/results/$id.zip");
+    $id = safe_id($_GET['id'] ?? ''); @unlink("$DATA/files/$id.pdf"); @unlink("$DATA/results/$id.zip"); @unlink("$DATA/logs/$id.log");
     jmod($JOBS, function ($all) use ($id) { unset($all[$id]); return $all; }); out(['ok' => true]);
 }
 case 'hb': {       // worker heartbeat
@@ -146,7 +146,7 @@ case 'cmds': {     // Claude: ?since=<ms>
 case 'clear': {    // purana data saaf: finished (done) jobs + unke files/results, commands log, purane workers. running/queued/failed bachte hain.
     $removed = 0; $ids = [];
     jmod($JOBS, function ($all) use (&$removed, &$ids) { foreach ($all as $k => $x) { if (($x['status'] ?? '') === 'done') { $ids[] = $k; unset($all[$k]); $removed++; } } return $all; });
-    foreach ($ids as $id) { $id = safe_id((string)$id); @unlink("$DATA/files/$id.pdf"); @unlink("$DATA/results/$id.zip"); }
+    foreach ($ids as $id) { $id = safe_id((string)$id); @unlink("$DATA/files/$id.pdf"); @unlink("$DATA/results/$id.zip"); @unlink("$DATA/logs/$id.log"); }
     @file_put_contents($CMDS, '');
     $now = time(); jmod($WORK, function ($w) use ($now) { foreach ($w as $k => $x) { if ($now - (int)($x['seen'] ?? 0) > 600) unset($w[$k]); } return $w; });
     out(['ok' => true, 'removed_jobs' => $removed]);
@@ -169,6 +169,12 @@ case 'file': {     // stream one file from the result zip (exact name only; noth
     header('Content-Type: ' . ($types[$ext] ?? 'application/octet-stream')); header('X-Content-Type-Options: nosniff'); header('Cache-Control: no-store'); header('Content-Length: ' . $st['size']);
     if (isset($_GET['dl'])) header('Content-Disposition: attachment; filename="' . str_replace(['"', "\r", "\n"], '', basename($name)) . '"');
     $h = $z->getStream($name); if (!$h) bad('file padhi nahi gayi', 500); fpassthru($h); fclose($h); $z->close(); exit;
+}
+case 'log': {      // worker posts diagnostics (probe + end of run.log); Claude reads data/logs/<id>.log
+    $id = safe_id($_GET['id'] ?? ''); if ($id === '') bad('id galat');
+    $dir = "$DATA/logs"; if (!is_dir($dir)) @mkdir($dir, 0775, true);
+    $raw = (string)file_get_contents('php://input'); if (strlen($raw) > 60000) $raw = substr($raw, -60000);
+    file_put_contents("$dir/$id.log", $raw, LOCK_EX); out(['ok' => true]);
 }
 default: bad('a=? samajh nahi aaya', 404);
 }

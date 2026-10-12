@@ -129,9 +129,9 @@ pre.raw{margin:10px 0 0;max-height:320px;overflow:auto;background:var(--bg);bord
 
   <section class="card" id="claudeBox">
     <h2>Claude se madad</h2>
-    <p class="note" style="margin:0 0 10px">Jo likhoge, current file ki details (naam, status, error) ke saath Claude chat mein khulega. Wahan Claude m2.py theek karke site par deploy kar sakta hai.</p>
-    <form class="cmdbox" id="cmdForm"><input type="text" id="cmdIn" maxlength="800" placeholder="Claude ko kya karna hai? (khali chhodo to sirf details jayengi)" autocomplete="off" aria-label="Claude ko message"><button class="send" id="cmdBtn">Claude mein kholo</button></form>
-    <div class="acts" style="margin-top:10px"><button type="button" id="attBtn">+ File attach</button><button type="button" id="copyCtx">Details copy karo</button></div>
+    <p class="note" style="margin:0 0 10px">Message hub mein save hota hai aur details copy ho jati hain. Apne chalte Claude chat mein paste karo, ya wahan "hub dekho" likho: Claude hub se seedha padh kar m2.py theek aur deploy kar sakta hai.</p>
+    <form class="cmdbox" id="cmdForm"><input type="text" id="cmdIn" maxlength="800" placeholder="Claude ko kya karna hai? (khali chhodo to sirf details jayengi)" autocomplete="off" aria-label="Claude ko message"><button class="send" id="cmdBtn">Hub mein bhejo + copy</button></form>
+    <div class="acts" style="margin-top:10px"><button type="button" id="attBtn">+ File attach</button><button type="button" id="copyCtx">Details copy karo</button><button type="button" id="newChat">Naye chat mein kholo</button></div>
     <input type="file" id="attIn" multiple hidden accept="image/*,.json,.txt,.log,.pdf,.zip,.csv,.md">
     <div class="chips" id="attList" style="margin-top:8px"></div>
     <p class="note" id="attHint">Screenshot ya file attach karo: phone par share menu se seedha Claude app mein jati hai.</p>
@@ -195,7 +195,7 @@ function render(j,state){
     return `<div class="step"><span>${esc(x.label)}</span><span class="v">${n(x.done)}/${n(x.total)}${x.unit?" "+esc(x.unit):""}</span>${meter(pc,x.state==="ok"?"ok":"")}</div>`}).join("");
   const a=[];
   if(j.status==="done")a.push(`<a class="pri" href="${api()}?a=download&id=${encodeURIComponent(j.id)}&token=${encodeURIComponent(tok())}">Result zip download (${sz(j.result||0)})</a>`);
-  if(j.status==="failed")a.push(`<button class="pri" data-fix="1">Claude se fix karwao</button><button data-rq="${esc(j.id)}">Dobara try</button><button data-copy="1">Error copy</button>`);
+  if(j.status==="failed")a.push(`<button class="pri" data-fix="1">Claude ke liye copy karo</button><button data-rq="${esc(j.id)}">Dobara try</button><button data-copy="1">Error copy</button>`);
   a.push(`<button class="dng" data-del="${esc(j.id)}">Hatao</button>`);
   const stage=j.status==="failed"?"parsing fail hui":(j.stage||"");
   $("cur").innerHTML=
@@ -243,7 +243,7 @@ document.addEventListener("click",async e=>{
   const b=e.target.closest("button");if(!b)return;
   if(b.dataset.del){await call("delete",{id:b.dataset.del});poll()}
   if(b.dataset.rq){await call("requeue",{id:b.dataset.rq});poll()}
-  if(b.dataset.fix){sendClaude("");return}
+  if(b.dataset.fix){try{await navigator.clipboard.writeText(ctxText(""));b.textContent="Copy ho gaya: Claude chat mein paste karo"}catch(x){b.textContent="Copy nahi hua"}return}
   if(b.dataset.view){openJson(b.dataset.view);return}
   if(b.dataset.qn){OUT.qi=Math.max(0,Math.min(qList().length-1,OUT.qi+(+b.dataset.qn)));drawOut();return}
   if(b.dataset.raw){OUT.raw=!OUT.raw;drawOut();return}
@@ -280,9 +280,12 @@ $("drop").ondrop=e=>{e.preventDefault();$("drop").classList.remove("on");files(e
 
 $("cmdForm").addEventListener("submit",ev=>{
   ev.preventDefault();const t=$("cmdIn").value.trim();
-  sendClaude(t);
+  const b=$("cmdBtn");
+  navigator.clipboard.writeText(ctxText(t)).then(()=>{b.textContent="Copy ho gaya"},()=>{b.textContent="Hub mein gaya"});
+  setTimeout(()=>b.textContent="Hub mein bhejo + copy",2500);
   if(t){call("cmd",{},{method:"POST",body:JSON.stringify({text:t,by:"web"})}).then(()=>{$("cmdIn").value="";poll()})}
 });
+$("newChat").onclick=()=>sendClaude($("cmdIn").value.trim());
 $("copyCtx").onclick=async()=>{const b=$("copyCtx");try{await navigator.clipboard.writeText(ctxText($("cmdIn").value.trim()));b.textContent="Copy ho gaya"}catch(x){b.textContent="Copy nahi hua"}setTimeout(()=>b.textContent="Details copy karo",2000)};
 
 $("clearOld").onclick=async()=>{
@@ -348,6 +351,7 @@ function drawOut(){
   h+=`<div class="chips">${js.map(x=>`<button type="button" class="pill ${x.name===OUT.cur?"ok":""}" data-view="${esc(x.name)}">${esc(x.name.split("/").pop())} · ${sz(x.size)}</button>`).join("")||'<span class="note">Is result mein koi JSON nahi mili.</span>'}</div>`;
   if(OUT.err)h+=`<p class="note" style="color:var(--bad)">${esc(OUT.err)}</p>`;
   else if(OUT.cur&&!OUT.data)h+='<p class="empty">JSON load ho rahi hai…</p>';
+  if(OUT.data&&Array.isArray(OUT.data.questions)&&!qs.length)h+='<div class="warns">0 sawal bane: is PDF ka format parser se match nahi hua. Details copy karke Claude ko do.</div>';
   if(qs.length){
     const flagged=qs.filter(q=>(q.warnings||[]).length).length,ans=qs.filter(q=>q.correct_answer_id).length;
     h+=`<div class="tiles"><div class="tile"><b>${qs.length}</b><span>sawal</span></div><div class="tile"><b>${ans}</b><span>jawab set</span></div><div class="tile"><b>${flagged}</b><span>flagged</span></div></div>`;
