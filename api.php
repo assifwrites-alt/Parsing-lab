@@ -158,7 +158,7 @@ case 'files': {    // list files inside a finished result zip
     $id = safe_id($_GET['id'] ?? ''); $f = "$DATA/results/$id.zip"; if (!is_file($f)) bad('result nahi', 404);
     if (!class_exists('ZipArchive')) bad('server par zip support nahi hai', 500);
     $z = new ZipArchive(); if ($z->open($f) !== true) bad('zip khula nahi', 500);
-    $r = []; for ($i = 0; $i < $z->numFiles && count($r) < 400; $i++) { $st = $z->statIndex($i); if (substr($st['name'], -1) === '/') continue; $r[] = ['name' => $st['name'], 'size' => (int)$st['size']]; }
+    $r = []; for ($i = 0; $i < $z->numFiles && count($r) < 3000; $i++) { $st = $z->statIndex($i); if (substr($st['name'], -1) === '/') continue; $r[] = ['name' => $st['name'], 'size' => (int)$st['size']]; }
     $z->close(); out(['ok' => true, 'files' => $r]);
 }
 case 'file': {     // stream one file from the result zip (exact name only; nothing is extracted to disk)

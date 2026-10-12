@@ -219,14 +219,18 @@ def process(job):
         prog("result zip ban rahi hai", 99.5, read_jobs(os.path.join(base, "jobs")))
         zpath = os.path.join(base, "result.zip")
         outd = os.path.join(base, "out")
-        keep_pages = set()   # page images are kept only for questions that still need a human (flag review page)
-        try:
+        keep_pages = set()   # all page images if the total is small enough, else only for questions that still need a human
+        all_pages = glob.glob(os.path.join(outd, "_pages", "*.png"))
+        if sum(os.path.getsize(x) for x in all_pages) <= 150 * 1024 * 1024:
+            keep_pages = {os.path.basename(x) for x in all_pages}
+        else:
+          try:
             for q in json.load(open(os.path.join(outd, "student_view.json"), encoding="utf-8")).get("questions", []):
                 if not str(q.get("status", "")).startswith("verified"):
                     keep_pages.update(f"page_{int(p):03d}.png" for p in q.get("pages", []))
-        except Exception:
+          except Exception:
             pass
-        SKIP = ("_work", "_pages_hi", "_vision_cache", "_ocr")
+        SKIP = ("_work", "_pages_hi")   # raw OCR (_ocr, ocr_debug), raw_text, images, caches and decisions all stay in the zip
         with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
             for root, dirs, files in os.walk(outd):
                 dirs[:] = [d for d in dirs if d not in SKIP]

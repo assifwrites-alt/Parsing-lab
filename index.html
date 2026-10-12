@@ -193,6 +193,10 @@ h2{font-family:var(--disp);color:var(--brand2);letter-spacing:.16em}h2::before{c
 .prop{border:1px solid var(--brand2);background:var(--brand-soft);border-radius:12px;padding:12px;margin:10px 0;display:grid;gap:8px}
 .prop h3{margin:0;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--brand2)}
 .cf{display:inline-block;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700;text-transform:uppercase}.cf.high{background:var(--ok-soft);color:var(--ok)}.cf.medium{background:var(--warn-soft);color:var(--warn)}.cf.low{background:var(--bad-soft);color:var(--bad)}
+.chat .act{grid-column:1/-1;font:12px/1.4 var(--mono);color:var(--brand2);padding:1px 6px;opacity:.9}
+.fgrp{margin:6px 0;border:1px solid var(--line);border-radius:12px;padding:6px 12px;background:var(--soft)}.fgrp summary{cursor:pointer;font-weight:600;min-height:32px;display:flex;align-items:center;gap:8px}.fgrp summary small{color:var(--muted);font-weight:400}
+.flist{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:2px 14px;margin:6px 0;font-size:13px}.flist a{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin:8px 0}.gal img{width:100%;height:90px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:8px}
 .pal{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.6);display:grid;align-items:start;justify-items:center;padding:12vh 12px 0}
 .pal>div{width:100%;max-width:520px;background:var(--card);border:1px solid var(--brand);border-radius:14px;box-shadow:0 0 40px -8px var(--brand);overflow:hidden}
 .pal input{border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;font-family:var(--mono)}
@@ -238,7 +242,7 @@ h2{font-family:var(--disp);color:var(--brand2);letter-spacing:.16em}h2::before{c
       <section class="card"><h2>Files</h2><div class="fbar"><input type="search" id="jSearch" placeholder="File dhoondo…" aria-label="File search"><select id="jStat" aria-label="status filter"><option value="">Sab</option><option value="running">Chal rahi</option><option value="queued">Line mein</option><option value="done">Mukammal</option><option value="failed">Fail</option></select></div><div class="jl" id="jobList"><p class="empty">Koi file nahi</p></div></section>
       <section class="card" id="claudeBox">
         <h2>Claude</h2>
-        <div class="chat" id="cmds"></div>
+        <div class="note" id="claudeNow" style="margin:0 0 8px;color:var(--brand2)"></div><div class="chat" id="cmds"></div>
         <form class="cmdbox" id="cmdForm"><input type="text" id="cmdIn" maxlength="800" placeholder="Claude ko kya karna hai?" autocomplete="off" aria-label="Claude ko message"><button class="send" id="cmdBtn">Bhejo</button></form>
         <div class="acts" style="margin-top:10px"><button type="button" id="attBtn">+ File</button><button type="button" id="copyCtx">Details copy</button><button type="button" id="newChat">Naye chat mein</button></div>
         <input type="file" id="attIn" multiple hidden accept="image/*,.json,.txt,.log,.pdf,.zip,.csv,.md">
@@ -333,7 +337,9 @@ function jobList(state,cur){
 $("jSearch").oninput=$("jStat").onchange=()=>{if(lastState)jobList(lastState,pickCurrent(lastState.jobs))};
 function chat(state){
   const el=$("cmds"),atBottom=el.scrollHeight-el.scrollTop-el.clientHeight<40;
-  el.innerHTML=state.cmds.map(c=>`<div class="msg ${c.by==="claude"?"cl":"me"}"><small>${c.by==="claude"?"Claude":"Tum"} · ${new Date(c.ts).toTimeString().slice(0,5)}</small>${esc(c.text)}</div>`).join("")||'<p class="empty" style="grid-column:1">Abhi koi message nahi</p>';
+  const last=[...state.cmds].reverse().find(c=>c.by==="claude"),busy=last&&/^(▸|Dekh raha|Auto report|Fix tayyar nahi)/.test(last.text)&&Date.now()-last.ts<120000&&!/^Fix tayyar/.test(last.text);
+  $("claudeNow").innerHTML=busy?`<i class="dot"></i> Claude kaam kar raha hai: ${esc(last.text.replace(/^▸\s*/,""))}`:"";
+  el.innerHTML=state.cmds.map(c=>c.by==="claude"&&c.text.startsWith("▸ ")?`<div class="act">${esc(c.text)}</div>`:`<div class="msg ${c.by==="claude"?"cl":"me"}"><small>${c.by==="claude"?"Claude":"Tum"} · ${new Date(c.ts).toTimeString().slice(0,5)}</small>${esc(c.text)}</div>`).join("")||'<p class="empty" style="grid-column:1">Abhi koi message nahi</p>';
   if(atBottom)el.scrollTop=el.scrollHeight;
 }
 function render(j,state){
@@ -662,6 +668,26 @@ async function review(qid,action,edit){
   const r=await call("review",{id:OUT.id},{method:"POST",body:JSON.stringify({qid,action,edit})});
   if(r.ok){OUT.rev=(r.review&&!Array.isArray(r.review))?r.review:{};OUT.edit=false;const v=visible();if(!v.includes(OUT.qi)&&v.length){const nx=v.find(x=>x>OUT.qi);OUT.qi=nx!=null?nx:v[0]}drawOut()}
 }
+function filesPanel(){
+  if(!OUT.files.length)return"";
+  const G=[["Answer key + student key (JSON)",x=>/\.json$/i.test(x.name)&&!/\//.test(x.name)&&!/^_/.test(x.name)],
+    ["Raw OCR / raw text",x=>/(^|\/)(ocr_debug|_ocr|raw_text)\/|_ocr\.txt$|raw_text_all\.txt$|ocr_raw/i.test(x.name)],
+    ["Images (cropped)",x=>/^(images|images_lab|images_clean)\/.+\.(png|jpe?g|webp|gif)$/i.test(x.name)],
+    ["Source page images",x=>/^_pages\/.+\.png$/i.test(x.name)],
+    ["Reports + viewers",x=>/\.(md|html)$/i.test(x.name)&&!/\//.test(x.name)],
+    ["Cache + decisions",x=>/^(_vision_cache|_image_decisions|_flags)/.test(x.name)]];
+  const used=new Set();let o='<h2 style="margin-top:18px">Sab files</h2>';
+  for(const[t,f]of G){
+    const L=OUT.files.filter(x=>!used.has(x.name)&&f(x));L.forEach(x=>used.add(x.name));if(!L.length)continue;
+    const tot=L.reduce((s,x)=>s+x.size,0),isImg=/Images \(cropped\)/.test(t);
+    o+=`<details class="fgrp"><summary>${esc(t)} <small>${L.length} files · ${sz(tot)}</small></summary>`;
+    if(isImg)o+='<div class="gal">'+L.slice(0,60).map(x=>`<a href="${esc(fileUrl(x.name))}" target="_blank" rel="noopener"><img loading="lazy" src="${esc(fileUrl(x.name))}" alt="${esc(x.name)}"></a>`).join("")+'</div>';
+    o+='<div class="flist">'+L.slice(0,300).map(x=>`<a href="${esc(fileUrl(x.name,true))}" title="${esc(x.name)}">${esc(x.name)} · ${sz(x.size)}</a>`).join("")+(L.length>300?`<span class="note">…aur ${L.length-300} (zip mein hain)</span>`:"")+'</div></details>';
+  }
+  const rest=OUT.files.filter(x=>!used.has(x.name));
+  if(rest.length)o+=`<details class="fgrp"><summary>Baqi <small>${rest.length} files</small></summary><div class="flist">${rest.slice(0,200).map(x=>`<a href="${esc(fileUrl(x.name,true))}">${esc(x.name)} · ${sz(x.size)}</a>`).join("")}</div></details>`;
+  return o;
+}
 function drawOut(){
   const box=$("outBox"),js=OUT.files.filter(x=>/\.json$/i.test(x.name)&&!/\/|^_/.test(x.name)),qs=qList();
   let h='<h2>Output</h2>';
@@ -686,6 +712,7 @@ function drawOut(){
       h+=qHTML(qs[OUT.qi]);
     }
   }
+  h+=filesPanel();
   const dl=[];
   if(OUT.data)dl.push(`<a href="${esc(api()+"?"+new URLSearchParams({a:"final",id:OUT.id,token:tok()}))}">Final JSON (aapke review ke saath)</a>`);
   if(qs.length)dl.push('<select id="exSel" aria-label="Export" style="max-width:230px"><option value="">Export karo…</option><option value="csv:ok">CSV (verified + approved)</option><option value="anki:ok">Anki TSV (verified + approved)</option><option value="md:ok">Markdown (verified + approved)</option><option value="txt:ok">Plain text (verified + approved)</option><option value="csv:all">CSV (sab, flagged bhi)</option></select>');

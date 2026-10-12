@@ -80,6 +80,40 @@ def check_claude():
     except Exception as e:
         print("claude CLI chal nahi raha:", e); return False
 
+
+def act_label(name, inp):
+    f = lambda k: os.path.basename(str(inp.get(k, ""))) if inp.get(k) else ""
+    if name == "Read": return "Padh raha hun: " + (f("file_path") or "file")
+    if name in ("Edit", "MultiEdit"): return "Edit kar raha hun: " + (f("file_path") or "file")
+    if name == "Grep": return "Dhoond raha hun: " + str(inp.get("pattern", ""))[:60]
+    if name == "Glob": return "Files dekh raha hun: " + str(inp.get("pattern", ""))[:60]
+    return "Kaam: " + name
+
+def run_claude(args, cwd, timeout):
+    """Run claude -p with stream-json; post one short '▸ ...' activity line per tool use so the website shows what Claude is doing. Returns the final text."""
+    import threading
+    p = subprocess.Popen(claude_cmd(args + ["--output-format", "stream-json", "--verbose"]), cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    timer = threading.Timer(timeout, p.kill); timer.start()
+    final, texts, raw, n, last = "", [], [], 0, 0.0
+    try:
+        for line in p.stdout:
+            raw.append(line)
+            try: ev = json.loads(line)
+            except Exception: continue
+            if ev.get("type") == "assistant":
+                for blk in (ev.get("message") or {}).get("content") or []:
+                    if blk.get("type") == "tool_use" and n < 30 and time.time() - last > 1.5:
+                        try: post("▸ " + act_label(blk.get("name", ""), blk.get("input") or {})); n += 1; last = time.time()
+                        except Exception: pass
+                    elif blk.get("type") == "text": texts.append(blk.get("text", ""))
+            elif ev.get("type") == "result" and ev.get("result"):
+                final = str(ev["result"])
+        p.wait(timeout=30)
+    finally:
+        timer.cancel()
+    err = p.stderr.read() if p.stderr else ""
+    return (final or "\n".join(texts) or "".join(raw) or err or "(koi jawab nahi)").strip()
+
 def fetch_attachments(cmd):
     """Download [att:a,b] files from the hub into ATTDIR; return list of local paths. Names are re-checked (no path tricks)."""
     m = re.search(r"\[att:([^\]]+)\]", cmd); paths = []
@@ -119,10 +153,8 @@ def ask_claude(cmd, auto=False):
     dirs = []
     for d in [ATTDIR] + SHARE:
         if os.path.isdir(d): dirs += ["--add-dir", d]
-    r = subprocess.run(claude_cmd(["-p", prompt] + dirs + ["--allowedTools", ",".join(allowed),
-                        "--disallowedTools", "Bash,Write,WebFetch,WebSearch,NotebookEdit"]),
-                       cwd=WORK, capture_output=True, text=True, timeout=TIMEOUT)
-    return (r.stdout or r.stderr or "(koi jawab nahi)").strip()
+    return run_claude(["-p", prompt] + dirs + ["--allowedTools", ",".join(allowed),
+                        "--disallowedTools", "Bash,Write,WebFetch,WebSearch,NotebookEdit"], WORK, TIMEOUT)
 
 
 FIX_PROMPT = ("Tum ek strict MCQ verifier ho. Attached files: source PDF ke page image(s) aur q.json (parser ne ek sawal ka jo output diya + uske flags). "
@@ -138,10 +170,8 @@ def handle_fixq(text):
     atts = fetch_attachments(text)
     if not atts:
         post(f"Fix {qid}: attachments nahi mili."); return
-    r = subprocess.run(claude_cmd(["-p", FIX_PROMPT + "\nFiles: " + ", ".join(atts), "--add-dir", ATTDIR,
-                        "--allowedTools", "Read", "--disallowedTools", "Bash,Write,Edit,WebFetch,WebSearch,NotebookEdit"]),
-                       cwd=WORK, capture_output=True, text=True, timeout=420)
-    out = (r.stdout or r.stderr or "").strip()
+    out = run_claude(["-p", FIX_PROMPT + "\nFiles: " + ", ".join(atts), "--add-dir", ATTDIR,
+                        "--allowedTools", "Read", "--disallowedTools", "Bash,Write,Edit,WebFetch,WebSearch,NotebookEdit"], WORK, 420)
     m2 = re.search(r"\{.*\}", out, re.S)
     try:
         prop = json.loads(m2.group(0)) if m2 else None

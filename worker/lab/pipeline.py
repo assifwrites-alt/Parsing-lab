@@ -35,6 +35,16 @@ def run(pdf, out_dir, limit=None, mode="auto", use_vision=True, skip_parse=False
     if not kf: raise RuntimeError("m2.py produced no answer_key.json")
     data = json.load(open(kf)); qs = data.get("questions", [])
     if not qs: raise RuntimeError(f"0 questions parsed (mode={mode}, type={kind}, platform={platform}); format not matched")
+    try:   # raw text layer per page (pdftotext -layout) so the source text is always available next to the answer key
+        rt = os.path.join(out_dir, "raw_text"); os.makedirs(rt, exist_ok=True); allt = []
+        for pg in range(1, min(src.n, 600) + 1):
+            t = src.text_layer(pg)
+            if t.strip():
+                open(os.path.join(rt, f"page_{pg:03d}.txt"), "w", encoding="utf-8").write(t); allt.append(f"===== page {pg} =====\n{t}")
+        if allt: open(os.path.join(out_dir, "raw_text_all.txt"), "w", encoding="utf-8").write("\n".join(allt))
+        else: os.rmdir(rt)
+    except Exception as e:
+        notes.append(f"raw text dump skipped: {e}")
     budget = vision.Budget(out_dir)
     # Stage 1: image boundaries + classification BEFORE verification, so verification knows which images each question has
     lab_imgs, why = ([], None)
