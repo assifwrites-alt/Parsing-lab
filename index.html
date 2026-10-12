@@ -497,12 +497,13 @@ async function drawHealth(){
   const j=await call("health");
   if(!j.ok){box.innerHTML='<h2>System health</h2><p class="empty">'+esc(j.error||"nahi hua")+'</p>';return}
   const h=j.hub,b=h.binaries||{};
+  const nt=(v,yes,no)=>v?`<span class="ok-t">${esc(yes)}</span>`:`<span class="warn-t">${esc(no)}</span>`;
   let o='<h2>System health</h2><p class="note" style="margin:0 0 6px"><b>Hub (Hostinger)</b>: yahan UI, upload, review aur download chalte hain.</p><div class="hc">'
    +`<div><span>PHP</span><b>${esc(h.php)}</b></div><div><span>zip / curl</span><b>${yn(h.zip&&h.curl)}</b></div><div><span>data folder likhne layak</span><b>${yn(h.data_writable,h.disk_free_gb!=null?h.disk_free_gb+" GB free":"")}</b></div>`
-   +`<div><span>Claude assistant key</span><b>${yn(h.claude_key_set)}</b></div><div><span>shell commands (exec)</span><b>${yn(h.exec_allowed)}</b></div>`
-   +["pdftoppm","pdftotext","tesseract","python3"].map(k=>`<div><span>${k} is host par</span><b>${yn(!!b[k],b[k]||"nahi mila")}</b></div>`).join("")
-   +`<div><span>Bhari parsing (OCR) is host par</span><b>${yn(h.heavy_parsing_on_this_host)}</b></div></div>`;
-  if(!h.heavy_parsing_on_this_host)o+='<p class="note">Is hosting par poppler/tesseract nahi chal sakte, is liye bhari parsing worker (Colab/VPS) par hoti hai. Ye hub ka design hai, koi kharabi nahi.</p>';
+   +`<div><span>Claude assistant key (site par, optional)</span><b>${nt(h.claude_key_set,"laga hua","nahi laga")}</b></div>`
+   +`<div><span>shell commands</span><b>${nt(h.exec_works,"chalte hain","band")}</b></div>`
+   +["pdftoppm","pdftotext","tesseract","python3"].map(k=>`<div><span>${k}</span><b>${nt(!!b[k],b[k]||"","hub par nahi (worker par hota hai)")}</b></div>`).join("")+'</div>';
+  o+='<p class="note">Hub sirf site chalata hai. PDF parsing aur OCR worker (Colab/VPS) par hoti hai, is liye hub par ye tools na hona normal hai. Neeche worker ki report asal check hai.</p>';
   const ws=Object.entries(j.workers||{});
   o+='<p class="note" style="margin:10px 0 6px"><b>Workers (doctor.py report)</b></p>';
   if(!ws.length)o+='<p class="note">Abhi kisi worker ne doctor report nahi bheji. Worker dobara chalao (Colab Cell 1 + 2).</p>';

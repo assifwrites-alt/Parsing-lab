@@ -209,9 +209,10 @@ case 'health': {   // System health: what THIS host can really do + the workers'
     $can = fn(string $f) => function_exists($f) && !in_array($f, $dis, true);
     $exec = $can('shell_exec') || $can('exec') || $can('proc_open');
     $bins = []; foreach (['pdftoppm', 'pdftotext', 'tesseract', 'python3', 'gs', 'convert'] as $b) {
-        $p = $can('shell_exec') ? trim((string)@shell_exec('command -v ' . escapeshellarg($b) . ' 2>/dev/null')) : ''; $bins[$b] = $p !== '' ? $p : null; }
+        $p = $can('shell_exec') ? trim((string)@shell_exec('PATH=/usr/local/bin:/usr/bin:/bin:/opt/alt/python311/bin command -v ' . escapeshellarg($b) . ' 2>/dev/null')) : ''; $bins[$b] = $p !== '' ? $p : null; }
+    $exec_works = $can('shell_exec') && trim((string)@shell_exec('echo ok 2>&1')) === 'ok';
     $free = @disk_free_space($DATA);
-    $h = ['php' => PHP_VERSION, 'zip' => class_exists('ZipArchive'), 'curl' => function_exists('curl_init'), 'exec_allowed' => $exec, 'binaries' => $bins,
+    $h = ['php' => PHP_VERSION, 'zip' => class_exists('ZipArchive'), 'curl' => function_exists('curl_init'), 'exec_allowed' => $exec, 'exec_works' => $exec_works, 'binaries' => $bins,
           'memory_limit' => ini_get('memory_limit'), 'max_execution_time' => ini_get('max_execution_time'), 'upload_max' => ini_get('upload_max_filesize'),
           'data_writable' => is_writable($DATA), 'disk_free_gb' => $free ? round($free / 1073741824, 1) : null, 'claude_key_set' => !empty($CFG['anthropic_key']),
           'heavy_parsing_on_this_host' => $exec && !empty($bins['pdftoppm']) && !empty($bins['tesseract'])];
