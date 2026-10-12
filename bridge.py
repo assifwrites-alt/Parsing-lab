@@ -8,7 +8,7 @@ Pabandiyan (jaan boojh kar):
   * Claude sirf Read/Grep/Glob kar sakta hai aur sirf m2.py, worker.py, html_parse.py, run_lab.py, doctor.py, lab/*.py EDIT kar sakta hai.
     Bash, Write, web access band hai.
   * Sirf wohi commands chalti hain jo tumhare hub token se aayi hon (hub khud token check karta hai),
-    by="web" ya "auto" (worker ki flag report, ghante mein max 4), 1000 characters tak, ek waqt mein ek, ghante mein max 12.
+    by="web" ya "auto"; [fixq:job:qid] = ek sawal ka fix proposal (sirf Read, hub par propose, khud apply nahi) (worker ki flag report, ghante mein max 4), 1000 characters tak, ek waqt mein ek, ghante mein max 12.
   * Har tabdeeli edits.log mein diff ke saath likhi jati hai aur alag git commit banta hai (rollback aasan).
   * Bridge site deploy nahi karta. Naya worker.zip hub par `setworker` se jata hai (sirf allowed file names, purana backup, log); Colab Cell 1 usay utha leta hai.
 
@@ -23,6 +23,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 WORK = os.environ.get("LAB_WORK", os.path.join(os.path.expanduser("~"), "drh-bridge-work"))
 MAX_LEN, MAX_PER_HOUR, TIMEOUT = 1000, 12, 900
 MAX_AUTO_PER_HOUR = 4
+MAX_FIX_PER_HOUR = 30
 SHARE = [d for d in (os.environ.get('LAB_SHARE', '').split(':') if os.environ.get('LAB_SHARE') else [os.path.expanduser('~/storage/shared/DrHarry'), os.path.expanduser('~/storage/shared/Download')]) if d and os.path.isdir(d)]
 ATTDIR = os.path.join(os.path.expanduser('~'), 'drh-attach')
 EDITABLE = ["m2.py", "worker.py", "html_parse.py", "run_lab.py", "doctor.py", "lab/*.py"]
@@ -123,6 +124,34 @@ def ask_claude(cmd, auto=False):
                        cwd=WORK, capture_output=True, text=True, timeout=TIMEOUT)
     return (r.stdout or r.stderr or "(koi jawab nahi)").strip()
 
+
+FIX_PROMPT = ("Tum ek strict MCQ verifier ho. Attached files: source PDF ke page image(s) aur q.json (parser ne ek sawal ka jo output diya + uske flags). "
+ "Kaam: image padh kar sawal EXACTLY waisa likho jaisa source mein chhapa hai. Rules: sirf wohi likho jo image mein saaf padha ja sake; KABHI andaza mat lagao; "
+ "source ki spelling theek mat karo; option ids a,b,c,... hon; percentage wo peer-% hai jo option ke saath chhapi ho (nahi hai to null); "
+ "sahi jawab wohi hai jo source mark kare (tick / 'correct answer is X' / explanation); agar source mein saaf nahi to correct_answer_id null aur confidence low. "
+ "Jo hissa padha na jaye uska zikr notes mein karo. Jawab mein SIRF ek JSON object do, koi markdown ya extra text nahi: "
+ '{"stem":"","options":[{"id":"a","text":"","percentage":null}],"correct_answer_id":"a","explanation":"","confidence":"high|medium|low","notes":""}')
+
+def handle_fixq(text):
+    m = re.search(r"\[fixq:([A-Za-z0-9_-]+):([A-Za-z0-9_-]+)\]", text)
+    job, qid = m.group(1), m.group(2)
+    atts = fetch_attachments(text)
+    if not atts:
+        post(f"Fix {qid}: attachments nahi mili."); return
+    r = subprocess.run(claude_cmd(["-p", FIX_PROMPT + "\nFiles: " + ", ".join(atts), "--add-dir", ATTDIR,
+                        "--allowedTools", "Read", "--disallowedTools", "Bash,Write,Edit,WebFetch,WebSearch,NotebookEdit"]),
+                       cwd=WORK, capture_output=True, text=True, timeout=420)
+    out = (r.stdout or r.stderr or "").strip()
+    m2 = re.search(r"\{.*\}", out, re.S)
+    try:
+        prop = json.loads(m2.group(0)) if m2 else None
+    except Exception:
+        prop = None
+    if not isinstance(prop, dict) or not prop.get("options"):
+        post(f"Fix tayyar nahi hua ({qid}): Claude ka jawab JSON nahi tha: {out[:300]}"); return
+    call("propose", {"job": job, "qid": qid, "proposal": prop})
+    post(f"Fix tayyar ({qid}): confidence {prop.get('confidence','?')}. Viewer mein Accept ya Reject karo.")
+
 def record_edits(cmd):
     """Agar files badli hain: log, commit, worker.zip rebuild. Return summary ya ''."""
     import fnmatch
@@ -160,7 +189,7 @@ def main():
     setup_workdir()
     if not check_claude():
         print("WARNING: claude CLI theek se nahi chal raha. Termux mein `claude --version` aur `claude` (login) pehle khud chala kar dekho.")
-    since = int(time.time() * 1000); runs = []; autos = []; last_hb = 0
+    since = int(time.time() * 1000); runs = []; autos = []; fixes = []; last_hb = 0
     print("Bridge chal raha hai. Ctrl+C se band.")
     while True:
         try:
@@ -171,6 +200,14 @@ def main():
                 if c.get("by") not in ("web", "auto"):
                     continue
                 auto = c.get("by") == "auto"
+                if c.get("by") == "web" and "[fixq:" in str(c.get("text", "")):
+                    fixes[:] = [t for t in fixes if time.time() - t < 3600]
+                    if len(fixes) >= MAX_FIX_PER_HOUR:
+                        post("Fix ki ghante ki had (30) poori, thori der baad."); continue
+                    fixes.append(time.time()); print("fix:", str(c.get("text"))[:80])
+                    try: handle_fixq(str(c.get("text", ""))[:MAX_LEN])
+                    except Exception as e: post(f"Fix error: {e}")
+                    continue
                 text = str(c.get("text", ""))[:MAX_LEN]
                 runs = [t for t in runs if time.time() - t < 3600]
                 if auto:

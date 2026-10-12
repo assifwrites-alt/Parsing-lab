@@ -189,6 +189,10 @@ h2{font-family:var(--disp);color:var(--brand2);letter-spacing:.16em}h2::before{c
 .stb.verified,.st.done{box-shadow:0 0 10px -4px var(--ok)}
 .tlog{margin:0;max-height:240px;overflow:auto;background:#010605;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font:12px/1.5 var(--mono);color:#48ff9f;white-space:pre-wrap;word-break:break-word}
 .tlog .e{color:var(--bad)}.tlog .w{color:var(--warn)}.tlog .p{color:var(--brand2)}
+.kpi b,.ring>div{font-family:var(--mono);font-weight:800;font-variant-numeric:normal}
+.prop{border:1px solid var(--brand2);background:var(--brand-soft);border-radius:12px;padding:12px;margin:10px 0;display:grid;gap:8px}
+.prop h3{margin:0;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--brand2)}
+.cf{display:inline-block;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700;text-transform:uppercase}.cf.high{background:var(--ok-soft);color:var(--ok)}.cf.medium{background:var(--warn-soft);color:var(--warn)}.cf.low{background:var(--bad-soft);color:var(--bad)}
 .pal{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.6);display:grid;align-items:start;justify-items:center;padding:12vh 12px 0}
 .pal>div{width:100%;max-width:520px;background:var(--card);border:1px solid var(--brand);border-radius:14px;box-shadow:0 0 40px -8px var(--brand);overflow:hidden}
 .pal input{border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;font-family:var(--mono)}
@@ -221,7 +225,7 @@ h2{font-family:var(--disp);color:var(--brand2);letter-spacing:.16em}h2::before{c
       <div class="drop" id="drop" role="button" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4m0 0L7 9m5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg><b>PDF / HTML yahan chhodo ya dabao</b><small>PDF ya HTML/MHTML, kitni bhi badi; chhote tukdon mein upload hoti hai</small></div>
       <details class="card" id="upOpts" style="padding:12px 16px"><summary style="cursor:pointer;font-weight:600">Upload options <span class="note" id="optSum" style="margin:0 0 0 8px"></span></summary>
         <div class="opts"><label>Parser mode<select id="oMode"><option value="">Auto (PDF dekh kar)</option><option value="text">Text-layer (Question N of M)</option><option value="amedex">Screenshot OCR (amedex)</option></select></label>
-        <label>Vision fix (API credits lagte hain)<select id="oVis"><option value="1">On (agar key ho)</option><option value="0">Off</option></select></label>
+        <label>API vision fix (credits lagte hain)<select id="oVis"><option value="0">Off (Termux Claude se fix karao)</option><option value="1">On (API key + credits)</option></select></label>
         <label>Sirf pehle N sawal/pages (test run)<input type="number" id="oLim" min="0" max="5000" placeholder="khali = sab"></label></div>
         <p class="note">Ye options agli upload par lagte hain. Mode galat chuna to result flag hoga, tab Auto par wapas jao.</p></details>
       <input type="file" id="pfile" accept="application/pdf,.pdf,.html,.htm,.mhtml,.mht" multiple hidden>
@@ -368,7 +372,7 @@ async function poll(){
   if(!j.ok){setPill($("hubState"),"bad",j.error||"hub error");return}
   lastState=j;
   const cur=(SEL&&j.jobs.find(x=>x.id===SEL))||pickCurrent(j.jobs);
-  notifyChanges(j);render(cur,j);pullLog(cur);kpis(j);jobList(j,cur);chat(j);
+  notifyChanges(j);render(cur,j);pullLog(cur);pullProps();kpis(j);jobList(j,cur);chat(j);
   const w=j.workers.filter(x=>x.ago<60);
   w.length?setPill($("wkState"),"ok","worker online"):setPill($("wkState"),"warn","worker offline");
   const bo=j.bridge_ago!=null&&j.bridge_ago<60;
@@ -412,6 +416,10 @@ document.addEventListener("click",async e=>{
   if(b.dataset.rq){await call("requeue",{id:b.dataset.rq});poll()}
   if(b.dataset.fix){try{await navigator.clipboard.writeText(ctxText(""));b.textContent="Copy ho gaya: Claude chat mein paste karo"}catch(x){b.textContent="Copy nahi hua"}return}
   if(b.dataset.view){openJson(b.dataset.view);return}
+  if(b.dataset.fixq){await sendFix(qList().find(x=>x.id===b.dataset.fixq));return}
+  if(b.dataset.fixall){const todo=qList().filter(q=>!isOk(effSt(q))&&!OUT.props[q.id]&&!OUT.pend[q.id]).slice(0,10);if(!todo.length){toast("Koi flagged sawal baqi nahi");return}toast(todo.length+" sawal Claude ko bhej raha hun");for(const q of todo){if(!await sendFix(q))break}return}
+  if(b.dataset.pacc){const P=OUT.props[b.dataset.pacc];if(!P)return;await review(b.dataset.pacc,"edit",{stem:P.stem,explanation:P.explanation,correct_answer_id:P.correct_answer_id,options:P.options});await call("propose",{},{method:"POST",body:JSON.stringify({job:OUT.id,qid:b.dataset.pacc,clear:true})});delete OUT.props[b.dataset.pacc];drawOut();return}
+  if(b.dataset.prej){await call("propose",{},{method:"POST",body:JSON.stringify({job:OUT.id,qid:b.dataset.prej,clear:true})});delete OUT.props[b.dataset.prej];drawOut();return}
   if(b.id==="qGo"){OUT.q=$("qSearch").value;const v=visible();if(v.length)OUT.qi=v[0];drawOut();return}
   if(b.dataset.code!==undefined){OUT.code=b.dataset.code;const v=visible();if(v.length)OUT.qi=v[0];drawOut();return}
   if(b.dataset.qn){const v=visible(),p=v.indexOf(OUT.qi),np=Math.max(0,Math.min(v.length-1,(p<0?0:p)+(+b.dataset.qn)));OUT.qi=v[np]!=null?v[np]:OUT.qi;OUT.edit=false;drawOut();return}
@@ -425,9 +433,9 @@ document.addEventListener("click",async e=>{
 });
 
 // upload options (kept in this browser)
-function getOpts(){const m=$("oMode").value,v=$("oVis").value==="0"?false:true,l=parseInt($("oLim").value,10)||0;return{mode:m,vision:v,limit:l>0?l:0}}
+function getOpts(){const m=$("oMode").value,v=$("oVis").value==="1",l=parseInt($("oLim").value,10)||0;return{mode:m,vision:v,limit:l>0?l:0}}
 function optSave(){const o=getOpts();LS("drh-opts",JSON.stringify(o));$("optSum").textContent=[o.mode||"auto",o.vision?"vision on":"vision off",o.limit?"limit "+o.limit:""].filter(Boolean).join(" · ")}
-try{const o=JSON.parse(LS("drh-opts")||"{}");$("oMode").value=o.mode||"";$("oVis").value=o.vision===false?"0":"1";$("oLim").value=o.limit||""}catch(e){}
+try{const o=JSON.parse(LS("drh-opts")||"{}");$("oMode").value=o.mode||"";$("oVis").value=o.vision===true?"1":"0";$("oLim").value=o.limit||""}catch(e){}
 ["oMode","oVis","oLim"].forEach(i=>$(i).addEventListener("change",optSave));optSave();
 // toast + browser notification when a job finishes
 function toast(t){const e=document.createElement("div");e.className="toast";e.textContent=t;document.body.appendChild(e);setTimeout(()=>e.remove(),5000)}
@@ -441,6 +449,36 @@ function notifyChanges(state){
     }
   }
   const r=state.jobs.find(x=>x.status==="running");document.title=r?`${(+r.pct||0).toFixed(0)}% · Dr Harry Lab`:"Dr Harry Lab";
+}
+// send a flagged question (+ its source page images) to Termux Claude; it posts back a PROPOSAL, nothing is applied until you Accept
+async function attach(blob,name){
+  const r=await fetch(api()+"?"+new URLSearchParams({a:"attach",name}),{method:"POST",body:blob,headers:{"X-Token":tok()}});const x=await r.json();
+  if(!x.ok)throw new Error(x.error||"attach fail");return x.att;
+}
+async function sendFix(q){
+  if(!q)return false;
+  const pages=(q.pages||[]).slice(0,2);
+  if(!pages.length){toast("Q"+q.number+": page number maloom nahi");return false}
+  try{
+    const atts=[];
+    for(const p of pages){
+      const n="_pages/page_"+String(p).padStart(3,"0")+".png";
+      if(!hasFile(n)){toast("Q"+q.number+": page image result zip mein nahi");return false}
+      const r=await fetch(fileUrl(n));if(!r.ok)throw new Error("page "+p+" nahi mili");
+      atts.push(await attach(await r.blob(),`q${q.number}_page${p}.png`));
+    }
+    atts.push(await attach(new Blob([JSON.stringify({number:q.number,stem:qStem(q),options:q.options,correct_answer_id:q.correct_answer_id,explanation:q.explanation,flags:q.flags,pages:q.pages},null,1)],{type:"application/json"}),`q${q.number}.json`));
+    const r=await call("cmd",{},{method:"POST",body:JSON.stringify({text:`[fixq:${OUT.id}:${q.id}] Q${q.number} fix karo [att:${atts.join(",")}]`,by:"web"})});
+    if(!r.ok)throw new Error(r.error||"cmd fail");
+    OUT.pend[q.id]=Date.now();drawOut();poll();return true;
+  }catch(e){toast("Bhejna nahi hua: "+(e.message||e));return false}
+}
+async function pullProps(){
+  if(OUT.id===null||!Object.keys(OUT.pend).length)return;
+  const id=OUT.id,r=await call("proposals",{id});if(OUT.id!==id||!r.ok)return;
+  const pr=(r.proposals&&!Array.isArray(r.proposals))?r.proposals:{};let ch=false;
+  for(const k of Object.keys(OUT.pend)){if(pr[k]){delete OUT.pend[k];ch=true;toast("Claude ka fix tayyar: Q"+((qList().find(x=>x.id===k)||{}).number||""))}else if(Date.now()-OUT.pend[k]>15*60*1000){delete OUT.pend[k];ch=true}}
+  OUT.props=pr;if(ch)drawOut();
 }
 // keyboard shortcuts in the viewer (ignored while typing)
 document.addEventListener("keydown",e=>{
@@ -464,7 +502,7 @@ async function up(f){
   for(let i=0;i<total;i++){
     let ok=false,err="";
     for(let t=0;t<4&&!ok;t++){
-      const q=new URLSearchParams({a:"upload",id,name:f.name,idx:i,total,size:f.size});const O=getOpts();if(O.mode)q.set("mode",O.mode);if(O.vision===false)q.set("vision","0");if(O.limit)q.set("limit",O.limit);
+      const q=new URLSearchParams({a:"upload",id,name:f.name,idx:i,total,size:f.size});const O=getOpts();if(O.mode)q.set("mode",O.mode);if(!O.vision)q.set("vision","0");if(O.limit)q.set("limit",O.limit);
       try{const r=await fetch(api()+"?"+q,{method:"POST",headers:{"X-Token":tok()},body:f.slice(i*CH,(i+1)*CH)});const j=await r.json();if(j.ok)ok=true;else err=j.error||"error"}catch(e){err="network"}
       if(!ok)await new Promise(r=>setTimeout(r,1500*(t+1)));
     }
@@ -527,7 +565,7 @@ async function sendClaude(extra){
 }
 
 // ---- output viewer: student_view.json (verified / flagged / needs_human) + human review ----
-const OUT={id:null,files:[],cur:null,data:null,rawText:"",qi:0,raw:false,err:"",rev:{},filter:"attn",edit:false,q:"",code:""};
+const OUT={id:null,files:[],cur:null,data:null,rawText:"",qi:0,raw:false,err:"",rev:{},filter:"attn",edit:false,q:"",code:"",props:{},pend:{}};
 const qList=()=>OUT.data&&Array.isArray(OUT.data.questions)?OUT.data.questions:[];
 const qStem=q=>q.stem!=null?q.stem:q.text;
 const stCls=s=>s==="needs_human"?"needs_human":s==="approved_by_human"||s==="edited_by_human"?"human":/^verified/.test(s||"")?"verified":"";
@@ -573,12 +611,12 @@ function exportQs(kind,onlyOk){
 function hideOut(){if(OUT.id===null)return;OUT.id=null;$("outBox").hidden=true;$("outBox").innerHTML=""}
 async function ensureOut(j){
   if(OUT.id===j.id)return;
-  Object.assign(OUT,{id:j.id,files:[],cur:null,data:null,rawText:"",qi:0,raw:false,err:"",rev:{},edit:false});
+  Object.assign(OUT,{id:j.id,files:[],cur:null,data:null,rawText:"",qi:0,raw:false,err:"",rev:{},edit:false,props:{},pend:{}});
   $("outBox").hidden=false;$("outBox").innerHTML='<h2>Output</h2><p class="empty">Output load ho raha hai…</p>';
-  const [f,rv]=await Promise.all([call("files",{id:j.id}),call("review",{id:j.id})]);
+  const [f,rv,pr]=await Promise.all([call("files",{id:j.id}),call("review",{id:j.id}),call("proposals",{id:j.id})]);
   if(OUT.id!==j.id)return;
   if(!f.ok){$("outBox").innerHTML='<h2>Output</h2><p class="empty">'+esc(f.error||"load nahi hua")+'</p>';return}
-  OUT.files=f.files;OUT.rev=(rv&&rv.review&&!Array.isArray(rv.review))?rv.review:{};
+  OUT.props=(pr&&pr.proposals&&!Array.isArray(pr.proposals))?pr.proposals:{};OUT.files=f.files;OUT.rev=(rv&&rv.review&&!Array.isArray(rv.review))?rv.review:{};
   const js=f.files.filter(x=>/\.json$/i.test(x.name)&&!/\/|^_/.test(x.name));
   const pick=js.find(x=>x.name==="student_view.json")||js.find(x=>/answer_key\.json$/i.test(x.name))||js[0];
   if(pick)await openJson(pick.name);else drawOut();
@@ -608,8 +646,17 @@ function qHTML(q){
     <select id="edAns" aria-label="sahi jawab">${(q.options||[]).map(o=>`<option value="${esc(o.id)}" ${o.id===q.correct_answer_id?"selected":""}>Sahi jawab: ${esc(String(o.id).toUpperCase())}</option>`).join("")}</select>
     <textarea id="edExp" aria-label="explanation">${esc(typeof q.explanation==="string"?q.explanation:"")}</textarea>
     <div class="acts" style="margin:0"><button class="pri" type="button" data-save="${esc(q.id)}">Save (edited by you)</button><button type="button" data-edit="0">Cancel</button></div></div>`:"";
-  const acts=!OUT.edit?`<div class="acts"><button class="pri" type="button" data-appr="${esc(q.id)}">Approve</button><button type="button" data-edit="1">Edit</button>${OUT.rev[q.id]?`<button type="button" data-reset="${esc(q.id)}">Review hatao</button>`:""}</div>`:"";
-  return `<div class="qtxt"><b>Q${esc(q.number||"")}</b> <span class="stb ${stCls(st)}">${esc(stTxt(st))}</span></div>${pg?"":`<div class="qtxt">${esc(qStem(q))}</div>`}${imgs}${pg?"":ops}${pg}${fl}${note}${ex}${editor}${acts}`;
+  const P=OUT.props[q.id];
+  const prop=P?`<div class="prop"><h3>Claude ka fix <span class="cf ${esc(P.confidence)}">${esc(P.confidence)}</span></h3>
+    <div class="qtxt">${esc(P.stem)}</div>
+    ${(P.options||[]).map(o=>`<div class="opt ${o.id&&o.id===P.correct_answer_id?"ok":""}"><b>${esc(String(o.id||"").toUpperCase())}${o.id&&o.id===P.correct_answer_id?" ✓":""}</b><span>${esc(o.text)}</span>${o.percentage!=null?`<span class="note" style="margin:0 0 0 auto">${esc(o.percentage)}%</span>`:""}</div>`).join("")}
+    ${P.correct_answer_id?"":'<div class="warns">Source mein sahi jawab saaf nahi mila.</div>'}
+    ${P.notes?`<div class="warns">${esc(P.notes)}</div>`:""}
+    ${P.confidence!=="high"?'<div class="warns">Confidence high nahi: Accept se pehle source page se khud match karo.</div>':""}
+    <div class="acts" style="margin:0"><button class="pri" type="button" data-pacc="${esc(q.id)}">Accept (aapke naam se save)</button><button type="button" data-prej="${esc(q.id)}">Reject</button></div></div>`:"";
+  const fixb=!isOk(st)&&!P&&!OUT.edit?(OUT.pend[q.id]?'<button type="button" disabled>Claude padh raha hai…</button>':`<button type="button" data-fixq="${esc(q.id)}">Claude (Termux) se fix karao</button>`):"";
+  const acts=!OUT.edit?`<div class="acts"><button class="pri" type="button" data-appr="${esc(q.id)}">Approve</button>${fixb}<button type="button" data-edit="1">Edit</button>${OUT.rev[q.id]?`<button type="button" data-reset="${esc(q.id)}">Review hatao</button>`:""}</div>`:"";
+  return `<div class="qtxt"><b>Q${esc(q.number||"")}</b> <span class="stb ${stCls(st)}">${esc(stTxt(st))}</span></div>${pg?"":`<div class="qtxt">${esc(qStem(q))}</div>`}${imgs}${pg?"":ops}${pg}${fl}${note}${prop}${ex}${editor}${acts}`;
 }
 async function review(qid,action,edit){
   const r=await call("review",{id:OUT.id},{method:"POST",body:JSON.stringify({qid,action,edit})});
@@ -631,7 +678,7 @@ function drawOut(){
     const cl=Object.entries(codes).sort((a,b)=>b[1]-a[1]).slice(0,8),mx=cl.length?cl[0][1]:1;
     if(cl.length)h+='<div class="bars" aria-label="flag breakdown">'+cl.map(([k,n])=>`<button type="button" class="bar ${OUT.code===k?"on":""}" data-code="${esc(k)}" title="Sirf ye flag dikhao"><b>${esc(k)}</b><div><i style="width:${Math.max(4,n/mx*100)}%"></i></div><span>${n}</span></button>`).join("")+(OUT.code?'<button type="button" data-code="" class="pill">Filter hatao</button>':"")+'</div>';
     h+=`<div class="srch"><input type="search" id="qSearch" value="${esc(OUT.q)}" placeholder="Sawal number ya text dhoondo…" aria-label="Sawal search"><button type="button" id="qGo">Dhoondo</button></div>`;
-    h+=`<div class="acts" style="margin:0 0 6px"><select id="fSel" aria-label="filter" style="max-width:260px"><option value="attn" ${OUT.filter==="attn"?"selected":""}>Sirf jo dekhna baqi hai (${c.attn})</option><option value="all" ${OUT.filter==="all"?"selected":""}>Sab sawal</option></select></div>`;
+    h+=`<div class="acts" style="margin:0 0 6px"><select id="fSel" aria-label="filter" style="max-width:260px"><option value="attn" ${OUT.filter==="attn"?"selected":""}>Sirf jo dekhna baqi hai (${c.attn})</option><option value="all" ${OUT.filter==="all"?"selected":""}>Sab sawal</option></select><button type="button" data-fixall="1" title="Pehle 10 flagged sawal Claude ko bhejo">Claude se sab flagged fix karao (10 tak)</button></div>`;
     if(!v.length)h+='<p class="empty">Sab sawal verified ya review ho chuke hain.</p>';
     else{
       if(!v.includes(OUT.qi))OUT.qi=v[0];

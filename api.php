@@ -243,6 +243,21 @@ case 'health': {   // System health: what THIS host can really do + the workers'
     foreach ($d as $k => $x) $d[$k]['online'] = isset($w[$k]) && $now - (int)($w[$k]['seen'] ?? 0) < 60;
     out(['ok' => true, 'hub' => $h, 'workers' => $d]);
 }
+case 'propose': {   // Termux Claude posts a proposed fix for one flagged question (never applied automatically): data/proposals/<job>.json
+    $j = json_decode(file_get_contents('php://input'), true); if (!is_array($j)) bad('json galat');
+    $id = safe_id((string)($j['job'] ?? '')); $qid = safe_id((string)($j['qid'] ?? '')); if ($id === '' || $qid === '') bad('job/qid chahiye');
+    $dir = "$DATA/proposals"; if (!is_dir($dir)) @mkdir($dir, 0775, true); $f = "$dir/$id.json";
+    $aid = fn($v) => substr(preg_replace('/[^a-h]/', '', strtolower((string)$v)), 0, 1);
+    if (!empty($j['clear'])) { jmod($f, function ($x) use ($qid) { unset($x[$qid]); return $x; }); out(['ok' => true]); }
+    $p = (array)($j['proposal'] ?? []); $r = ['ts' => time(), 'stem' => substr((string)($p['stem'] ?? ''), 0, 6000), 'explanation' => substr((string)($p['explanation'] ?? ''), 0, 20000),
+        'correct_answer_id' => $aid($p['correct_answer_id'] ?? ''), 'confidence' => in_array(($p['confidence'] ?? ''), ['high', 'medium', 'low'], true) ? $p['confidence'] : 'low',
+        'notes' => substr((string)($p['notes'] ?? ''), 0, 1500), 'options' => []];
+    foreach (array_slice((array)($p['options'] ?? []), 0, 10) as $o) { $o = (array)$o; $r['options'][] = ['id' => $aid($o['id'] ?? ''), 'text' => substr((string)($o['text'] ?? ''), 0, 2000), 'percentage' => is_numeric($o['percentage'] ?? null) ? 0 + $o['percentage'] : null]; }
+    jmod($f, function ($x) use ($qid, $r) { $x[$qid] = $r; return $x; }); out(['ok' => true]);
+}
+case 'proposals': {   // website: GET ?id=<job>
+    $id = safe_id((string)($_GET['id'] ?? '')); out(['ok' => true, 'proposals' => jload("$DATA/proposals/$id.json", new stdClass())]);
+}
 case 'review': {   // human review overlay per job: GET ?id= ; POST {qid, action: approve|edit|reset, edit:{stem,options,correct_answer_id,explanation}}
     $id = safe_id((string)($_GET['id'] ?? '')); if ($id === '') bad('id chahiye'); $f = "$DATA/review"; if (!is_dir($f)) @mkdir($f, 0775, true); $f .= "/$id.json";
     if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
