@@ -82,7 +82,8 @@ h2{margin:0 0 10px;font-size:15px;letter-spacing:.04em;text-transform:uppercase;
 .acts .dng{color:var(--bad)}
 .empty{margin:0;color:var(--muted);text-align:center;padding:10px 0}
 .note{font-size:13px;color:var(--muted);margin:10px 0 0}
-.cmdbox{display:grid;grid-template-columns:1fr auto;gap:8px}
+.cmdbox{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
+@media (max-width:480px){.cmdbox{grid-template-columns:1fr}}
 .feed{margin-top:10px;max-height:150px;overflow:auto;font:12px/1.6 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--muted)}
 .maint{display:flex;justify-content:flex-end}
 .maint button{min-height:40px;background:none;border:0;color:var(--muted);font:inherit;font-size:13px;text-decoration:underline;cursor:pointer}
@@ -109,9 +110,11 @@ h2{margin:0 0 10px;font-size:15px;letter-spacing:.04em;text-transform:uppercase;
 
   <section class="card pj" id="cur" aria-live="polite"><p class="empty">Abhi koi file nahi. Upar PDF chhodo.</p></section>
 
-  <section class="card">
-    <h2>Claude ko command</h2>
-    <form class="cmdbox" id="cmdForm"><input type="text" id="cmdIn" maxlength="1000" placeholder="command likho…" autocomplete="off" aria-label="Command"><button class="send" id="cmdBtn">Send</button></form>
+  <section class="card" id="claudeBox">
+    <h2>Claude se madad</h2>
+    <p class="note" style="margin:0 0 10px">Jo likhoge, current file ki details (naam, status, error) ke saath Claude chat mein khulega. Wahan Claude m2.py theek karke site par deploy kar sakta hai.</p>
+    <form class="cmdbox" id="cmdForm"><input type="text" id="cmdIn" maxlength="800" placeholder="Claude ko kya karna hai? (khali chhodo to sirf details jayengi)" autocomplete="off" aria-label="Claude ko message"><button class="send" id="cmdBtn">Claude mein kholo</button></form>
+    <div class="acts" style="margin-top:10px"><button type="button" id="copyCtx">Details copy karo</button></div>
     <div class="feed" id="cmds"></div>
   </section>
 
@@ -157,8 +160,6 @@ function pickCurrent(jobs){
   const by=(st)=>jobs.filter(j=>j.status===st);
   const run=by("running").sort((a,b)=>(b.updated||0)-(a.updated||0))[0];
   if(run)return run;
-  const q=by("queued").sort((a,b)=>(a.created||0)-(b.created||0))[0];
-  if(q)return q;
   return [...jobs].sort((a,b)=>(b.updated||0)-(a.updated||0))[0]||null;
 }
 
@@ -173,7 +174,7 @@ function render(j,state){
     return `<div class="step"><span>${esc(x.label)}</span><span class="v">${n(x.done)}/${n(x.total)}${x.unit?" "+esc(x.unit):""}</span>${meter(pc,x.state==="ok"?"ok":"")}</div>`}).join("");
   const a=[];
   if(j.status==="done")a.push(`<a class="pri" href="${api()}?a=download&id=${encodeURIComponent(j.id)}&token=${encodeURIComponent(tok())}">Result zip download (${sz(j.result||0)})</a>`);
-  if(j.status==="failed")a.push(`<button class="pri" data-rq="${esc(j.id)}">Dobara try</button><button data-copy="1">Error copy</button>`);
+  if(j.status==="failed")a.push(`<button class="pri" data-fix="1">Claude se fix karwao</button><button data-rq="${esc(j.id)}">Dobara try</button><button data-copy="1">Error copy</button>`);
   a.push(`<button class="dng" data-del="${esc(j.id)}">Hatao</button>`);
   const stage=j.status==="failed"?"parsing fail hui":(j.stage||"");
   $("cur").innerHTML=
@@ -197,10 +198,29 @@ async function poll(){
   $("cmds").textContent=j.cmds.map(c=>`[${new Date(c.ts).toTimeString().slice(0,8)}] ${c.text}`).join("\n");
 }
 
+const REPO="assifwrites-alt/Parsing-lab";
+function ctxText(extra){
+  const j=lastState?pickCurrent(lastState.jobs):null;
+  let t=`Dr Harry Lab hub: ${location.origin} | repo: ${REPO}\n`;
+  if(j){
+    t+=`File: ${j.name} (${sz(j.size||0)})\nStatus: ${j.status}, ${(+j.pct||0).toFixed(1)}%\nStage/Error: ${j.stage||""}\n`;
+    if(j.detail)t+=`Detail: ${j.detail}\n`;
+    const st=(j.jobs||[]).filter(x=>+x.total).map(x=>`${x.label}: ${x.done}/${x.total}`).join("; ");
+    if(st)t+=`Steps: ${st}\n`;
+  }else t+="Abhi koi file nahi.\n";
+  if(extra)t+=`\nMeri baat: ${extra}\n`;
+  if(j&&j.status==="failed")t+="\nm2.py ko is PDF ke hisaab se theek karo, repo mein push karo aur Hostinger par deploy karo. Mere Colab worker ke liye Cell 1 dobara chalane ka batao.";
+  return t;
+}
+function openClaude(text){
+  try{navigator.clipboard.writeText(text)}catch(e){}
+  window.open("https://claude.ai/new?q="+encodeURIComponent(text.slice(0,6000)),"_blank","noopener");
+}
 document.addEventListener("click",async e=>{
   const b=e.target.closest("button");if(!b)return;
   if(b.dataset.del){await call("delete",{id:b.dataset.del});poll()}
   if(b.dataset.rq){await call("requeue",{id:b.dataset.rq});poll()}
+  if(b.dataset.fix){openClaude(ctxText(""));return}
   if(b.dataset.copy){const t=($("errTxt")||{}).textContent||"";try{await navigator.clipboard.writeText(t);b.textContent="Copy ho gaya"}catch(x){b.textContent="Copy nahi hua"}}
 });
 
@@ -231,11 +251,12 @@ $("drop").ondragover=e=>{e.preventDefault();$("drop").classList.add("on")};
 $("drop").ondragleave=()=>$("drop").classList.remove("on");
 $("drop").ondrop=e=>{e.preventDefault();$("drop").classList.remove("on");files(e.dataTransfer.files)};
 
-$("cmdForm").addEventListener("submit",async ev=>{
-  ev.preventDefault();const t=$("cmdIn").value.trim();if(!t)return;
-  const j=await call("cmd",{},{method:"POST",body:JSON.stringify({text:t,by:"web"})});
-  if(j.ok){$("cmdIn").value="";poll()}
+$("cmdForm").addEventListener("submit",ev=>{
+  ev.preventDefault();const t=$("cmdIn").value.trim();
+  openClaude(ctxText(t));
+  if(t){call("cmd",{},{method:"POST",body:JSON.stringify({text:t,by:"web"})}).then(()=>{$("cmdIn").value="";poll()})}
 });
+$("copyCtx").onclick=async()=>{const b=$("copyCtx");try{await navigator.clipboard.writeText(ctxText($("cmdIn").value.trim()));b.textContent="Copy ho gaya"}catch(x){b.textContent="Copy nahi hua"}setTimeout(()=>b.textContent="Details copy karo",2000)};
 
 $("clearOld").onclick=async()=>{
   if(!confirm("Purane finished results, commands aur purane worker records hata dun? Chalti ya fail hui file nahi hategi."))return;
