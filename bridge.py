@@ -22,8 +22,9 @@ TOKEN = os.environ.get("TOKEN", "")
 HERE = os.path.dirname(os.path.abspath(__file__))
 WORK = os.environ.get("LAB_WORK", os.path.join(os.path.expanduser("~"), "drh-bridge-work"))
 MAX_LEN, MAX_PER_HOUR, TIMEOUT = 1000, 12, 900
-MAX_AUTO_PER_HOUR = 4
-MAX_FIX_PER_HOUR = 30
+MAX_AUTO_PER_HOUR = 30
+AUTO_APPLY = os.environ.get('AUTO_APPLY', '1') != '0'
+MAX_FIX_PER_HOUR = 80
 SHARE = [d for d in (os.environ.get('LAB_SHARE', '').split(':') if os.environ.get('LAB_SHARE') else [os.path.expanduser('~/storage/shared/DrHarry'), os.path.expanduser('~/storage/shared/Download')]) if d and os.path.isdir(d)]
 ATTDIR = os.path.join(os.path.expanduser('~'), 'drh-attach')
 EDITABLE = ["m2.py", "worker.py", "html_parse.py", "run_lab.py", "doctor.py", "lab/*.py"]
@@ -205,6 +206,16 @@ def do_fix(job, qid, paths, parsed=None, spot=False):
     same = bool(parsed) and agrees(parsed, prop)
     if spot and same:
         post(f"Spot-check Q{parsed.get('number')}: PDF se match ✓"); return prop
+    applied = False
+    if not same and prop.get("confidence") == "high" and prop.get("correct_answer_id") and AUTO_APPLY and not spot:
+        out2 = run_claude(["-p", FIX_PROMPT + "\nFiles: " + ", ".join(paths), "--add-dir", ATTDIR, "--allowedTools", "Read", "--disallowedTools", "Bash,Write,Edit,WebFetch,WebSearch,NotebookEdit"], WORK, 420)
+        m3 = re.search(r"\{.*\}", out2, re.S)
+        try: prop2 = json.loads(m3.group(0)) if m3 else None
+        except Exception: prop2 = None
+        if isinstance(prop2, dict) and prop2.get("options") and agrees(prop, prop2) and not spot:   # two independent reads of the page match each other
+            call("propose", {"job": job, "qid": qid, "proposal": prop, "apply": True, "note": "2 alag padhai ek jaisi (high confidence)"}); applied = True
+            post(f"Q{parsed.get('number') if parsed else qid}: do baar padhne par ek jaisa, fix apply kar diya.")
+    if applied: return prop
     call("propose", {"job": job, "qid": qid, "proposal": prop, "agrees": same and not spot})
     post(f"{'Dobara padh kar confirm hua' if same else 'Fix tayyar'} ({qid}): confidence {prop.get('confidence','?')}." + ("" if same else " Viewer mein Accept ya Reject karo."))
     return prop
@@ -227,6 +238,11 @@ def bad_questions(jid):
     if not raw: return None, []
     try: qs = json.loads(raw.decode("utf-8")).get("questions", [])
     except Exception: return None, []
+    try: rv = call("review", qs="&id=" + jid).get("review") or {}
+    except Exception: rv = {}
+    for q in qs:
+        r = rv.get(str(q.get("id"))) if isinstance(rv, dict) else None
+        if r and r.get("status"): q["status"] = r["status"]
     return qs, [q for q in qs if not str(q.get("status", "")).startswith(("verified", "approved", "edited", "claude_"))]
 
 def evidence_for(jid, bad):
@@ -307,35 +323,44 @@ def agent_save(st):
     try: json.dump(st, open(AGENT_FILE, "w"), indent=1)
     except Exception: pass
 
-def agent_audit(jid):
-    """DR HARRY AGENT, one pass on a finished job. Returns evidence text if a SYSTEMATIC code fix is needed, else None (everything handled here)."""
+def agent_set(jid, state, note=""):
+    try: call("agent", {"id": jid, "state": state, "note": note[:380]})
+    except Exception as e: print("agent state post fail:", e)
+
+def agent_audit(jid, force=False):
+    """DR HARRY AGENT, one pass on a finished job. Returns evidence text if a SYSTEMATIC code fix is needed (job will be re-run), else None (job state set: clean | needs_you)."""
     from collections import Counter
     st = agent_state(); js = st.setdefault(jid, {"rounds": 0, "log": []}); post(f"AGENT: job {jid} ka audit shuru (round {js['rounds'] + 1}).")
+    agent_set(jid, "working", "DR HARRY Agent output check/fix kar raha hai")
     qs_all, bad = bad_questions(jid)
     if qs_all is None:
-        post("AGENT: student_view.json nahi mili, audit nahi ho saka."); return None
-    ok = [q for q in qs_all if q not in bad]
+        post("AGENT: student_view.json nahi mili."); agent_set(jid, "needs_you", "student_view.json nahi mili"); return None
     summary = f"{len(qs_all)} sawal, {len(bad)} flagged."
-    evidence = None
     if bad:
         top, n = Counter(f.get("code") if isinstance(f, dict) else f for q in bad for f in q.get("flags", [])).most_common(1)[0]
-        if len(bad) >= 6 and n >= 0.5 * len(bad) and js["rounds"] < 3:
-            js["rounds"] += 1
-            evidence = f"{len(bad)}/{len(qs_all)} questions are flagged and {n} of them share the flag '{top}': a SYSTEMATIC problem in the parser/verifier, not individual content errors.\n" + evidence_for(jid, bad)
-            summary += f" Systematic flag '{top}' ({n}) -> parser fix try."
-        else:
-            done = auto_questions(jid, bad); summary += f" {done} flagged sawal PDF se dobara padhe."
-    if evidence is None:
-        # spot-check: verified questions bhi PDF se milao (output match)
-        pick = ok[::max(1, len(ok) // 4)][:4] if ok else []
-        if pick:
-            done, diffs = auto_questions(jid, pick, spot=True)
-            summary += f" Spot-check {done} verified sawal: {diffs} mein farq (viewer mein proposal)." if diffs else f" Spot-check {done} verified sawal: sab PDF se match."
-        js["log"].append({"ts": int(time.time()), "summary": summary}); js["log"] = js["log"][-20:]; agent_save(st)
-        post("AGENT khatam: " + summary)
+        if len(bad) >= 6 and n >= 0.5 * len(bad) and js["rounds"] < 3 and not force:
+            js["rounds"] += 1; summary += f" Systematic flag '{top}' ({n}) -> parser fix."
+            js["log"].append({"ts": int(time.time()), "summary": summary}); agent_save(st)
+            return f"{len(bad)}/{len(qs_all)} questions are flagged and {n} of them share the flag '{top}': a SYSTEMATIC problem in the parser/verifier, not individual content errors.\n" + evidence_for(jid, bad)
+        for _ in range(3):   # per-question re-reads in chunks until nothing is left or no progress
+            before = len(bad)
+            auto_questions(jid, bad[:40])
+            qs_all, bad = bad_questions(jid)
+            if not bad or len(bad) >= before: break
+        summary += f" Baad mein {len(bad)} flagged."
+    ok = [q for q in qs_all if q not in bad]
+    pick = ok[::max(1, len(ok) // 4)][:4] if ok else []
+    if pick:
+        done, diffs = auto_questions(jid, pick, spot=True)
+        summary += f" Spot-check {done}: {diffs} mein farq." if diffs else f" Spot-check {done}: sab PDF se match."
+    js["log"].append({"ts": int(time.time()), "summary": summary}); js["log"] = js["log"][-20:]; agent_save(st)
+    qs_all, bad = bad_questions(jid)
+    if not bad:
+        agent_set(jid, "clean", "Sab sawal verified: output tayyar. " + summary); post("AGENT: output CLEAN, tayyar. " + summary)
     else:
-        js["log"].append({"ts": int(time.time()), "summary": summary}); agent_save(st)
-    return evidence
+        nums = ", ".join("Q" + str(q.get("number")) for q in bad[:15])
+        agent_set(jid, "needs_you", f"{len(bad)} sawal agent verify nahi kar saka ({nums}); source mein saaf nahi ya padhai alag aayi. " + summary); post("AGENT: " + str(len(bad)) + " sawal verify nahi hue: " + nums)
+    return None
 
 fixes = []
 
@@ -387,13 +412,16 @@ def main():
                     reply = ask_claude(text, auto, evidence); extra = record_edits(text)
                     post(reply + ("\n\n" + extra if extra else ""))
                     mj = re.search(r"\[job:([A-Za-z0-9_-]+)\]", text)
+                    if auto and mj and not (extra.startswith("Badli hui files") and "hub par chadh gaya" in extra):
+                        if " fail" in text: agent_set(mj.group(1), "needs_you", "Parser fail hua aur agent code fix nahi kar saka: " + reply[:250])
+                        else: agent_audit(mj.group(1), force=True)   # no code fix possible -> fix the questions one by one instead
                     if auto and extra.startswith("Badli hui files") and "hub par chadh gaya" in extra and mj:
                         jid = mj.group(1); requeues[jid] = requeues.get(jid, 0) + 1
                         if requeues[jid] <= 3:
                             call("requeue", qs="&id=" + jid)
                             post("Job dobara line mein daal di: worker naya code utha kar wahin se resume karega (koshish %d/3)." % requeues[jid])
                         else:
-                            post("Is job par 3 auto-koshish ho chuki; ab aap dekho (Dobara try ya Claude ko likho).")
+                            post("Is job par 3 auto-koshish ho chuki; baqi sawal ek-ek karke theek kar raha hun."); agent_audit(jid, force=True)
                 except Exception as e:
                     post(f"Bridge error: {e}")
         except Exception as e:

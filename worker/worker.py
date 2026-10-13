@@ -294,8 +294,7 @@ def process(job):
         prog("result upload ho raha hai", 99.8)
         upload_result(jid, zpath)
         tot, nbad, ftxt = flag_summary(outd)
-        if nbad:
-            auto_report(jid, pname, f"AUTO {pname}: {nbad}/{tot} sawal flagged. {ftxt}")
+        auto_report(jid, pname, f"AUTO {pname}: {nbad}/{tot} sawal flagged. {ftxt}")
         print(f"[{time.strftime('%H:%M:%S')}] done: {pname}", flush=True)
         ok = True
     except Exception as e:

@@ -107,7 +107,7 @@ case 'result': {   // worker POST raw chunk of the result zip: id, idx, total
     if (chunk_count($dir, $total) === $total) {
         if (!assemble($dir, $total, "$DATA/results/$id.zip")) bad('jodne mein dikkat', 500);
         $sz = filesize("$DATA/results/$id.zip");
-        jmod($JOBS, function ($all) use ($id, $sz) { if (isset($all[$id])) { $all[$id]['status'] = 'done'; $all[$id]['stage'] = 'parsing poori, result tayyar'; $all[$id]['pct'] = 100; $all[$id]['result'] = $sz; $all[$id]['updated'] = time(); } return $all; });
+        jmod($JOBS, function ($all) use ($id, $sz) { if (isset($all[$id])) { $all[$id]['status'] = 'done'; $all[$id]['stage'] = 'parsing poori, result tayyar'; $all[$id]['pct'] = 100; $all[$id]['result'] = $sz; $all[$id]['agent'] = ['state' => 'working', 'note' => 'DR HARRY Agent output check kar raha hai', 'ts' => time()]; $all[$id]['updated'] = time(); } return $all; });
         $done = true;
     }
     out(['ok' => true, 'done' => $done]);
@@ -119,7 +119,7 @@ case 'fail': {
 }
 case 'requeue': {
     $id = safe_id($_GET['id'] ?? '');
-    jmod($JOBS, function ($all) use ($id) { if (isset($all[$id]) && is_file("{$GLOBALS['DATA']}/files/$id.pdf")) { $all[$id]['status'] = 'queued'; $all[$id]['stage'] = 'dobara line mein'; $all[$id]['pct'] = 0; $all[$id]['updated'] = time(); } return $all; });
+    jmod($JOBS, function ($all) use ($id) { if (isset($all[$id]) && is_file("{$GLOBALS['DATA']}/files/$id.pdf")) { $all[$id]['status'] = 'queued'; $all[$id]['agent'] = ['state' => 'working', 'note' => 'Agent ne parser theek kiya, job dobara chal rahi hai', 'ts' => time()]; $all[$id]['stage'] = 'dobara line mein'; $all[$id]['pct'] = 0; $all[$id]['updated'] = time(); } return $all; });
     out(['ok' => true]);
 }
 case 'download': { // browser download of the finished result zip
@@ -246,6 +246,11 @@ case 'health': {   // System health: what THIS host can really do + the workers'
     foreach ($d as $k => $x) $d[$k]['online'] = isset($w[$k]) && $now - (int)($w[$k]['seen'] ?? 0) < 60;
     out(['ok' => true, 'hub' => $h, 'workers' => $d]);
 }
+case 'agent': {    // bridge agent reports its state for a job: working | clean | needs_you
+    $j = json_decode(file_get_contents('php://input'), true); $id = safe_id((string)($j['id'] ?? '')); $stt = (string)($j['state'] ?? ''); if ($id === '' || !in_array($stt, ['working', 'clean', 'needs_you'], true)) bad('id/state galat');
+    jmod($JOBS, function ($all) use ($id, $stt, $j) { if (isset($all[$id])) $all[$id]['agent'] = ['state' => $stt, 'note' => substr((string)($j['note'] ?? ''), 0, 400), 'ts' => time()]; return $all; });
+    out(['ok' => true]);
+}
 case 'propose': {   // Termux Claude posts a proposed fix for one flagged question (never applied automatically): data/proposals/<job>.json
     $j = json_decode(file_get_contents('php://input'), true); if (!is_array($j)) bad('json galat');
     $id = safe_id((string)($j['job'] ?? '')); $qid = safe_id((string)($j['qid'] ?? '')); if ($id === '' || $qid === '') bad('job/qid chahiye');
@@ -253,6 +258,12 @@ case 'propose': {   // Termux Claude posts a proposed fix for one flagged questi
     $aid = fn($v) => substr(preg_replace('/[^a-h]/', '', strtolower((string)$v)), 0, 1);
     if (!empty($j['agrees'])) { $rf = "$DATA/review"; if (!is_dir($rf)) @mkdir($rf, 0775, true); $rf .= "/$id.json";   // Claude re-read the sources and confirms the parse: mark verified, no proposal
         jmod($rf, function ($x) use ($qid, $j) { if (!isset($x[$qid]) || ($x[$qid]['status'] ?? '') === 'verified (claude-confirmed)') $x[$qid] = ['status' => 'verified (claude-confirmed)', 'edit' => new stdClass(), 'note' => substr((string)($j['note'] ?? ''), 0, 500), 'ts' => time()]; return $x; });
+        jmod($f, function ($x) use ($qid) { unset($x[$qid]); return $x; }); out(['ok' => true]); }
+    if (!empty($j['apply'])) { $rf = "$DATA/review"; if (!is_dir($rf)) @mkdir($rf, 0775, true); $rf .= "/$id.json";   // two independent Claude re-reads of the page agree: apply as the final value
+        $p = (array)($j['proposal'] ?? []); $e = ['stem' => substr((string)($p['stem'] ?? ''), 0, 6000), 'explanation' => substr((string)($p['explanation'] ?? ''), 0, 20000), 'correct_answer_id' => $aid($p['correct_answer_id'] ?? ''), 'options' => []];
+        foreach (array_slice((array)($p['options'] ?? []), 0, 10) as $o) { $o = (array)$o; $e['options'][] = ['id' => $aid($o['id'] ?? ''), 'text' => substr((string)($o['text'] ?? ''), 0, 2000), 'percentage' => is_numeric($o['percentage'] ?? null) ? 0 + $o['percentage'] : null]; }
+        if ($e['stem'] === '' || count($e['options']) < 2 || $e['correct_answer_id'] === '') bad('apply ke liye proposal poora nahi');
+        jmod($rf, function ($x) use ($qid, $e, $j) { if (!isset($x[$qid]) || ($x[$qid]['status'] ?? '') !== 'approved_by_human' && ($x[$qid]['status'] ?? '') !== 'edited_by_human') $x[$qid] = ['status' => 'verified (claude-fixed)', 'edit' => $e, 'note' => substr((string)($j['note'] ?? ''), 0, 500), 'ts' => time()]; return $x; });
         jmod($f, function ($x) use ($qid) { unset($x[$qid]); return $x; }); out(['ok' => true]); }
     if (!empty($j['clear'])) { jmod($f, function ($x) use ($qid) { unset($x[$qid]); return $x; }); out(['ok' => true]); }
     $p = (array)($j['proposal'] ?? []); $r = ['ts' => time(), 'stem' => substr((string)($p['stem'] ?? ''), 0, 6000), 'explanation' => substr((string)($p['explanation'] ?? ''), 0, 20000),
