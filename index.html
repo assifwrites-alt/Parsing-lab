@@ -359,7 +359,7 @@ function render(j,state){
   if(AG)a.push(agW?`<button type="button" disabled>DR HARRY Agent kaam kar raha hai…</button>`:`<a class="pri" href="${api()}?a=final&id=${encodeURIComponent(j.id)}&token=${encodeURIComponent(tok())}">${AG.state==="clean"?"Clean final output (JSON)":"Final output (JSON, kuch sawal baqi)"}</a>`);
   if(j.status==="done"&&!agW)a.push(`<a class="pri" href="${api()}?a=download&id=${encodeURIComponent(j.id)}&token=${encodeURIComponent(tok())}">Result zip download (${sz(j.result||0)})</a>`);
   if(j.status==="failed")a.push(`<button class="pri" data-fix="1">Claude ke liye copy</button><button data-ask="1">Claude ko bhejo</button><button data-rq="${esc(j.id)}">Dobara try</button><button data-copy="1">Error copy</button>`);
-  if(AG)a.unshift(`<div class="why" style="flex-basis:100%">${AG.state==="clean"?"✅":AG.state==="working"?"🤖":"⚠️"} ${esc(AG.note||"")}</div>`);
+  if(AG)a.unshift(`<div class="why" style="flex-basis:100%">${AG.state==="clean"?"✅":AG.state==="working"?"🤖":"⚠️"} ${esc(AG.note||"")}${agW&&(state.bridge_ago==null||state.bridge_ago>120)?" — Termux Claude offline hai, usay on karo, agent wahin se shuru ho jayega":""}</div>`);
   a.push(`<button class="dng" data-del="${esc(j.id)}">Hatao</button>`);
   const stage=j.status==="failed"?"Parsing fail hui":(j.stage||(j.status==="queued"?"Worker ka intezar":""));
   const sub=[`${sz(j.size||0)}`,j.worker?`worker ${esc(j.worker)}`:"",`shuru ${ago(now-(j.created||now))} pehle`,

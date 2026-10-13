@@ -240,9 +240,18 @@ def bad_questions(jid):
     except Exception: return None, []
     try: rv = call("review", qs="&id=" + jid).get("review") or {}
     except Exception: rv = {}
+    seen = {}
+    for q in qs: seen[q.get("number")] = seen.get(q.get("number"), 0) + 1
     for q in qs:
         r = rv.get(str(q.get("id"))) if isinstance(rv, dict) else None
-        if r and r.get("status"): q["status"] = r["status"]
+        if r and r.get("status"): q["status"] = r["status"]; continue
+        if not str(q.get("status", "")).startswith("verified"): continue
+        ids = [str(o.get("id", "")).lower() for o in (q.get("options") or [])]; why = None   # structural integrity of "verified" questions
+        if len(str(q.get("stem") or "").strip()) < 10: why = "stem khali/bahut chhota"
+        elif len(ids) < 2: why = "options 2 se kam"
+        elif str(q.get("correct_answer_id") or "").lower() not in ids: why = "sahi jawab options mein nahi"
+        elif seen.get(q.get("number"), 0) > 1: why = "question number duplicate"
+        if why: q["status"] = "flagged"; q["flags"] = list(q.get("flags") or []) + [{"code": "structure", "detail": why}]
     return qs, [q for q in qs if not str(q.get("status", "")).startswith(("verified", "approved", "edited", "claude_"))]
 
 def evidence_for(jid, bad):
@@ -291,6 +300,11 @@ def record_edits(cmd):
         changed = [f for f in changed if ok(f)]
     if not changed:
         return ""
+    for f in [f for f in changed if f.endswith(".py")]:   # never ship a file that does not even compile
+        r = subprocess.run([sys.executable, "-m", "py_compile", os.path.join(WORK, f)], capture_output=True, text=True)
+        if r.returncode != 0:
+            git("checkout", "--", *changed)
+            return "Claude ki edit mein syntax error tha, wapas kar diya (worker.zip nahi badla): " + (r.stderr or "")[-200:]
     diff = git("diff").stdout
     with open(os.path.join(WORK, "edits.log"), "a", encoding="utf-8") as fh:
         fh.write(f"\n=== {time.strftime('%Y-%m-%d %H:%M:%S')} | {cmd[:200]}\n{diff}\n")
@@ -336,12 +350,20 @@ def agent_audit(jid, force=False):
     if qs_all is None:
         post("AGENT: student_view.json nahi mili."); agent_set(jid, "needs_you", "student_view.json nahi mili"); return None
     summary = f"{len(qs_all)} sawal, {len(bad)} flagged."
+    force = force or bool(js.get("worse"))
+    if js.pop("awaiting", False) and len(bad) > js.get("prev_bad", 10 ** 9):   # the code fix made things worse: undo it
+        try:
+            call("rollbackworker"); g = git("log", "-1", "--format=%s").stdout
+            if g.startswith("claude:"): git("reset", "--hard", "HEAD~1")
+            post(f"AGENT: parser fix se flags {js['prev_bad']} se {len(bad)} ho gaye (bura), fix wapas (rollback) kar diya."); js["worse"] = True; force = True
+        except Exception as e: post(f"AGENT: rollback nahi hua ({e})")
+        agent_save(st)
     if bad:
         top, n = Counter(f.get("code") if isinstance(f, dict) else f for q in bad for f in q.get("flags", [])).most_common(1)[0]
         if len(bad) >= 6 and n >= 0.5 * len(bad) and js["rounds"] < 3 and not force:
-            js["rounds"] += 1; summary += f" Systematic flag '{top}' ({n}) -> parser fix."
+            js["rounds"] += 1; js["prev_bad"] = len(bad); summary += f" Systematic flag '{top}' ({n}) -> parser fix."
             js["log"].append({"ts": int(time.time()), "summary": summary}); agent_save(st)
-            return f"{len(bad)}/{len(qs_all)} questions are flagged and {n} of them share the flag '{top}': a SYSTEMATIC problem in the parser/verifier, not individual content errors.\n" + evidence_for(jid, bad)
+            return f"{len(bad)}/{len(qs_all)} questions are flagged and {n} of them share the flag '{top}': a SYSTEMATIC problem in the parser/verifier, not individual content errors.\n" + evidence_for(jid, bad) + ("\nEarlier agent attempts on this job (do not repeat a fix that did not help):\n" + "\n".join(x["summary"] for x in js["log"][-4:]) if js["log"] else "")
         for _ in range(3):   # per-question re-reads in chunks until nothing is left or no progress
             before = len(bad)
             auto_questions(jid, bad[:40])
@@ -418,7 +440,7 @@ def main():
                     if auto and extra.startswith("Badli hui files") and "hub par chadh gaya" in extra and mj:
                         jid = mj.group(1); requeues[jid] = requeues.get(jid, 0) + 1
                         if requeues[jid] <= 3:
-                            call("requeue", qs="&id=" + jid)
+                            call("requeue", qs="&id=" + jid); _st = agent_state(); _st.setdefault(jid, {"rounds": 0, "log": []})["awaiting"] = True; agent_save(_st)
                             post("Job dobara line mein daal di: worker naya code utha kar wahin se resume karega (koshish %d/3)." % requeues[jid])
                         else:
                             post("Is job par 3 auto-koshish ho chuki; baqi sawal ek-ek karke theek kar raha hun."); agent_audit(jid, force=True)
