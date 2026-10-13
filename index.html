@@ -426,6 +426,7 @@ document.addEventListener("click",async e=>{
   if(b.dataset.fix){try{await navigator.clipboard.writeText(ctxText(""));b.textContent="Copy ho gaya: Claude chat mein paste karo"}catch(x){b.textContent="Copy nahi hua"}return}
   if(b.dataset.view){openJson(b.dataset.view);return}
   if(b.dataset.fixq){await sendFix(qList().find(x=>x.id===b.dataset.fixq));return}
+  if(b.dataset.agent){const r=await call("cmd",{},{method:"POST",body:JSON.stringify({text:`[agent:${OUT.id}] audit karo`,by:"web"})});toast(r.ok?"Agent ko bhej diya, Claude feed dekho":"Bheja nahi gaya");poll();return}
   if(b.dataset.fixall){const todo=qList().filter(q=>!isOk(effSt(q))&&!OUT.props[q.id]&&!OUT.pend[q.id]).slice(0,10);if(!todo.length){toast("Koi flagged sawal baqi nahi");return}toast(todo.length+" sawal Claude ko bhej raha hun");for(const q of todo){if(!await sendFix(q))break}return}
   if(b.dataset.pacc){const P=OUT.props[b.dataset.pacc];if(!P)return;await review(b.dataset.pacc,"edit",{stem:P.stem,explanation:P.explanation,correct_answer_id:P.correct_answer_id,options:P.options});await call("propose",{},{method:"POST",body:JSON.stringify({job:OUT.id,qid:b.dataset.pacc,clear:true})});delete OUT.props[b.dataset.pacc];drawOut();return}
   if(b.dataset.prej){await call("propose",{},{method:"POST",body:JSON.stringify({job:OUT.id,qid:b.dataset.prej,clear:true})});delete OUT.props[b.dataset.prej];drawOut();return}
@@ -745,7 +746,7 @@ function drawOut(){
     const cl=Object.entries(codes).sort((a,b)=>b[1]-a[1]).slice(0,8),mx=cl.length?cl[0][1]:1;
     if(cl.length)h+='<div class="bars" aria-label="flag breakdown">'+cl.map(([k,n])=>`<button type="button" class="bar ${OUT.code===k?"on":""}" data-code="${esc(k)}" title="Sirf ye flag dikhao"><b>${esc(k)}</b><div><i style="width:${Math.max(4,n/mx*100)}%"></i></div><span>${n}</span></button>`).join("")+(OUT.code?'<button type="button" data-code="" class="pill">Filter hatao</button>':"")+'</div>';
     h+=`<div class="srch"><input type="search" id="qSearch" value="${esc(OUT.q)}" placeholder="Sawal number ya text dhoondo…" aria-label="Sawal search"><button type="button" id="qGo">Dhoondo</button></div>`;
-    h+=`<div class="acts" style="margin:0 0 6px"><select id="fSel" aria-label="filter" style="max-width:260px"><option value="attn" ${OUT.filter==="attn"?"selected":""}>Sirf jo dekhna baqi hai (${c.attn})</option><option value="all" ${OUT.filter==="all"?"selected":""}>Sab sawal</option></select><button type="button" data-fixall="1" title="Pehle 10 flagged sawal Claude ko bhejo">Claude se sab flagged fix karao (10 tak)</button></div>`;
+    h+=`<div class="acts" style="margin:0 0 6px"><select id="fSel" aria-label="filter" style="max-width:260px"><option value="attn" ${OUT.filter==="attn"?"selected":""}>Sirf jo dekhna baqi hai (${c.attn})</option><option value="all" ${OUT.filter==="all"?"selected":""}>Sab sawal</option></select><button type="button" data-agent="1" title="Agent: PDF se match, flags, parser fix, restart - sab khud">DR HARRY Agent chalao</button><button type="button" data-fixall="1" title="Pehle 10 flagged sawal Claude ko bhejo">Claude se sab flagged fix karao (10 tak)</button></div>`;
     if(!v.length)h+='<p class="empty">Sab sawal verified ya review ho chuke hain.</p>';
     else{
       if(!v.includes(OUT.qi))OUT.qi=v[0];

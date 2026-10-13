@@ -139,8 +139,8 @@ def ask_claude(cmd, auto=False, evidence=""):
         extra += "\nPhone ke ye folders bhi read-only padh sakte ho (user kuch kahe to): " + ", ".join(SHARE)
     m = re.search(r"\[job:([A-Za-z0-9_-]+)\]", cmd)
     if m:
-        try: extra = "\n\nHub log (end) for this job:\n" + call("readlog", qs="&id=" + m.group(1)).get("log", "")[-3500:]
-        except Exception as e: extra = f"\n(log nahi mila: {e})"
+        try: extra += "\n\nHub log (end) for this job:\n" + call("readlog", qs="&id=" + m.group(1)).get("log", "")[-3500:]
+        except Exception as e: extra += f"\n(log nahi mila: {e})"
     if auto:
         cmd = ("AUTOMATIC report from the worker (no human wrote this). Decide if the flags show a SYSTEMATIC parser problem "
                "(same flag code on many questions, or 0 questions, or a crash). If yes, find the root cause in m2.py / lab/*.py and make the smallest fix. "
@@ -193,7 +193,7 @@ def agrees(parsed, prop):
     except Exception:
         return False
 
-def do_fix(job, qid, paths, parsed=None):
+def do_fix(job, qid, paths, parsed=None, spot=False):
     """Claude (read-only) re-reads the page images and posts a PROPOSAL to the hub. Returns the proposal dict or None."""
     out = run_claude(["-p", FIX_PROMPT + "\nFiles: " + ", ".join(paths), "--add-dir", ATTDIR,
                       "--allowedTools", "Read", "--disallowedTools", "Bash,Write,Edit,WebFetch,WebSearch,NotebookEdit"], WORK, 420)
@@ -203,7 +203,9 @@ def do_fix(job, qid, paths, parsed=None):
     if not isinstance(prop, dict) or not prop.get("options"):
         post(f"Fix tayyar nahi hua ({qid}): Claude ka jawab JSON nahi tha: {out[:300]}"); return None
     same = bool(parsed) and agrees(parsed, prop)
-    call("propose", {"job": job, "qid": qid, "proposal": prop, "agrees": same})
+    if spot and same:
+        post(f"Spot-check Q{parsed.get('number')}: PDF se match ✓"); return prop
+    call("propose", {"job": job, "qid": qid, "proposal": prop, "agrees": same and not spot})
     post(f"{'Dobara padh kar confirm hua' if same else 'Fix tayyar'} ({qid}): confidence {prop.get('confidence','?')}." + ("" if same else " Viewer mein Accept ya Reject karo."))
     return prop
 
@@ -238,9 +240,9 @@ def evidence_for(jid, bad):
             L.append(f"[source text page {p}]\n" + (t.decode("utf-8", "replace")[:1800] if t else "(raw_text nahi mila)"))
     return "\n".join(L)
 
-def auto_questions(jid, bad):
+def auto_questions(jid, bad, spot=False):
     """Per-question auto fix: page images + page text go to Claude; confirmed re-reads are marked verified, differences wait for Accept."""
-    os.makedirs(ATTDIR, exist_ok=True); done = 0
+    os.makedirs(ATTDIR, exist_ok=True); done = 0; diffs = 0
     for q in bad[:12]:
         fixes[:] = [t for t in fixes if time.time() - t < 3600]
         if len(fixes) >= MAX_FIX_PER_HOUR: post("Fix ki ghante ki had poori; baqi sawal thori der baad (ya viewer se)."); break
@@ -254,10 +256,13 @@ def auto_questions(jid, bad):
         qj = os.path.join(ATTDIR, f"{jid}_q{q.get('number')}.json"); json.dump({k: q.get(k) for k in ("number", "stem", "options", "correct_answer_id", "explanation", "flags", "pages")}, open(qj, "w"), ensure_ascii=False, indent=1); paths.append(qj)
         post(f"▸ Q{q.get('number')} dobara padh raha hun")
         try:
-            if do_fix(jid, str(q.get("id")), paths, q): done += 1
+            pr = do_fix(jid, str(q.get("id")), paths, q, spot)
+            if pr:
+                done += 1
+                if spot and not agrees(q, pr): diffs += 1
         except Exception as e:
             post(f"Q{q.get('number')} fix error: {e}")
-    return done
+    return (done, diffs) if spot else done
 
 def record_edits(cmd):
     """Agar files badli hain: log, commit, worker.zip rebuild. Return summary ya ''."""
@@ -291,6 +296,46 @@ def record_edits(cmd):
     except Exception as e:
         tail = f"worker.zip hub par upload nahi hua ({e}); local worker.zip bana hai."
     return "Badli hui files: " + ", ".join(changed) + ". " + tail
+
+AGENT_FILE = os.path.join(WORK, "agent_state.json")
+
+def agent_state():
+    try: return json.load(open(AGENT_FILE))
+    except Exception: return {}
+
+def agent_save(st):
+    try: json.dump(st, open(AGENT_FILE, "w"), indent=1)
+    except Exception: pass
+
+def agent_audit(jid):
+    """DR HARRY AGENT, one pass on a finished job. Returns evidence text if a SYSTEMATIC code fix is needed, else None (everything handled here)."""
+    from collections import Counter
+    st = agent_state(); js = st.setdefault(jid, {"rounds": 0, "log": []}); post(f"AGENT: job {jid} ka audit shuru (round {js['rounds'] + 1}).")
+    qs_all, bad = bad_questions(jid)
+    if qs_all is None:
+        post("AGENT: student_view.json nahi mili, audit nahi ho saka."); return None
+    ok = [q for q in qs_all if q not in bad]
+    summary = f"{len(qs_all)} sawal, {len(bad)} flagged."
+    evidence = None
+    if bad:
+        top, n = Counter(f.get("code") if isinstance(f, dict) else f for q in bad for f in q.get("flags", [])).most_common(1)[0]
+        if len(bad) >= 6 and n >= 0.5 * len(bad) and js["rounds"] < 3:
+            js["rounds"] += 1
+            evidence = f"{len(bad)}/{len(qs_all)} questions are flagged and {n} of them share the flag '{top}': a SYSTEMATIC problem in the parser/verifier, not individual content errors.\n" + evidence_for(jid, bad)
+            summary += f" Systematic flag '{top}' ({n}) -> parser fix try."
+        else:
+            done = auto_questions(jid, bad); summary += f" {done} flagged sawal PDF se dobara padhe."
+    if evidence is None:
+        # spot-check: verified questions bhi PDF se milao (output match)
+        pick = ok[::max(1, len(ok) // 4)][:4] if ok else []
+        if pick:
+            done, diffs = auto_questions(jid, pick, spot=True)
+            summary += f" Spot-check {done} verified sawal: {diffs} mein farq (viewer mein proposal)." if diffs else f" Spot-check {done} verified sawal: sab PDF se match."
+        js["log"].append({"ts": int(time.time()), "summary": summary}); js["log"] = js["log"][-20:]; agent_save(st)
+        post("AGENT khatam: " + summary)
+    else:
+        js["log"].append({"ts": int(time.time()), "summary": summary}); agent_save(st)
+    return evidence
 
 fixes = []
 
@@ -329,34 +374,26 @@ def main():
                 runs.append(time.time())
                 print("cmd:", text); post("Auto report mili, dekh raha hun..." if auto else "Dekh raha hun...")
                 evidence = ""
+                ag = re.search(r"\[agent:([A-Za-z0-9_-]+)\]", text)
                 mj0 = re.search(r"\[job:([A-Za-z0-9_-]+)\]", text)
-                if auto and mj0 and " flagged" in text and " fail" not in text:
-                    qs_all, bad = bad_questions(mj0.group(1))
-                    if bad:
-                        from collections import Counter
-                        top, n = Counter(f.get("code") if isinstance(f, dict) else f for q in bad for f in q.get("flags", [])).most_common(1)[0]
-                        if len(bad) >= 6 and n >= 0.5 * len(bad):
-                            evidence = f"{len(bad)}/{len(qs_all)} questions are flagged and {n} of them share the flag '{top}': a SYSTEMATIC problem in the parser/verifier, not individual content errors.\n" + evidence_for(mj0.group(1), bad)
-                        else:
-                            try:
-                                done = auto_questions(mj0.group(1), bad)
-                                post(f"Auto-fix: {done}/{min(len(bad), 12)} flagged sawal Claude ne dobara padhe. Viewer mein dekho." )
-                            except Exception as e:
-                                post(f"Auto-fix error: {e}")
-                            continue
-                    else:
-                        post("Auto report: koi flagged sawal nahi bacha."); continue
+                if ag:
+                    auto = True; text = f"[job:{ag.group(1)}] AGENT audit (manual) " + text[:300]; mj0 = re.search(r"\[job:([A-Za-z0-9_-]+)\]", text)
+                if auto and mj0 and (ag or (" flagged" in text and " fail" not in text)):
+                    try: evidence = agent_audit(mj0.group(1))
+                    except Exception as e:
+                        post(f"AGENT error: {e}"); continue
+                    if evidence is None: continue
                 try:
                     reply = ask_claude(text, auto, evidence); extra = record_edits(text)
                     post(reply + ("\n\n" + extra if extra else ""))
                     mj = re.search(r"\[job:([A-Za-z0-9_-]+)\]", text)
                     if auto and extra.startswith("Badli hui files") and "hub par chadh gaya" in extra and mj:
                         jid = mj.group(1); requeues[jid] = requeues.get(jid, 0) + 1
-                        if requeues[jid] <= 2:
+                        if requeues[jid] <= 3:
                             call("requeue", qs="&id=" + jid)
-                            post("Job dobara line mein daal di: worker naya code utha kar wahin se resume karega (koshish %d/2)." % requeues[jid])
+                            post("Job dobara line mein daal di: worker naya code utha kar wahin se resume karega (koshish %d/3)." % requeues[jid])
                         else:
-                            post("Is job par 2 auto-koshish ho chuki; ab aap dekho (Dobara try ya Claude ko likho).")
+                            post("Is job par 3 auto-koshish ho chuki; ab aap dekho (Dobara try ya Claude ko likho).")
                 except Exception as e:
                     post(f"Bridge error: {e}")
         except Exception as e:
