@@ -203,11 +203,12 @@ def do_fix(job, qid, paths, parsed=None, spot=False):
     except Exception: prop = None
     if not isinstance(prop, dict) or not prop.get("options"):
         post(f"Fix tayyar nahi hua ({qid}): Claude ka jawab JSON nahi tha: {out[:300]}"); return None
-    same = bool(parsed) and agrees(parsed, prop)
+    strict = any((f.get("code") if isinstance(f, dict) else f) in STRICT for f in ((parsed or {}).get("flags") or []))   # notes/images/links cannot be confirmed by a stem/options re-read
+    same = bool(parsed) and agrees(parsed, prop) and not strict
     if spot and same:
         post(f"Spot-check Q{parsed.get('number')}: PDF se match ✓"); return prop
     applied = False
-    if not same and prop.get("confidence") == "high" and prop.get("correct_answer_id") and AUTO_APPLY and not spot:
+    if not same and prop.get("confidence") == "high" and prop.get("correct_answer_id") and AUTO_APPLY and not spot and not strict:
         out2 = run_claude(["-p", FIX_PROMPT + "\nFiles: " + ", ".join(paths), "--add-dir", ATTDIR, "--allowedTools", "Read", "--disallowedTools", "Bash,Write,Edit,WebFetch,WebSearch,NotebookEdit"], WORK, 420)
         m3 = re.search(r"\{.*\}", out2, re.S)
         try: prop2 = json.loads(m3.group(0)) if m3 else None
@@ -244,15 +245,56 @@ def bad_questions(jid):
     for q in qs: seen[q.get("number")] = seen.get(q.get("number"), 0) + 1
     for q in qs:
         r = rv.get(str(q.get("id"))) if isinstance(rv, dict) else None
-        if r and r.get("status"): q["status"] = r["status"]; continue
+        if r and r.get("status"): q["status"] = r["status"]; q["reviewed"] = True
         if not str(q.get("status", "")).startswith("verified"): continue
-        ids = [str(o.get("id", "")).lower() for o in (q.get("options") or [])]; why = None   # structural integrity of "verified" questions
-        if len(str(q.get("stem") or "").strip()) < 10: why = "stem khali/bahut chhota"
-        elif len(ids) < 2: why = "options 2 se kam"
-        elif str(q.get("correct_answer_id") or "").lower() not in ids: why = "sahi jawab options mein nahi"
-        elif seen.get(q.get("number"), 0) > 1: why = "question number duplicate"
-        if why: q["status"] = "flagged"; q["flags"] = list(q.get("flags") or []) + [{"code": "structure", "detail": why}]
+    template_check(jid, qs)
     return qs, [q for q in qs if not str(q.get("status", "")).startswith(("verified", "approved", "edited", "claude_"))]
+
+STRICT = ("model_notes", "model_images", "model_ref")
+
+def _has(v): return bool(str(v or "").strip())
+def _notes_ok(n): return isinstance(n, dict) and _has(n.get("heading")) and _has(n.get("body_markdown"))
+
+def golden(qs, names=None):
+    """The most complete, cleanly verified question = the MODEL every other question is compared with."""
+    best, bs = None, -1
+    for q in qs:
+        if not str(q.get("status", "")).startswith("verified") or q.get("flags"): continue
+        o = q.get("options") or []; ids = [str(x.get("id", "")).lower() for x in o]; sm = q.get("source_match") or {}
+        if names is not None and any(not im.get("file") or os.path.basename(im["file"]) not in names for im in q.get("images") or []): continue
+        if len(o) != 5 or str(q.get("correct_answer_id") or "").lower() not in ids or not _has(q.get("stem")) or not _has(q.get("explanation")) or not _notes_ok(q.get("notes")): continue
+        sc = len(q.get("images") or []) * 3 + (2 if (sm.get("stem") or 0) >= 95 and (sm.get("options_min") or 0) >= 95 else 0) + (1 if any(isinstance(x.get("percentage"), (int, float)) for x in o) else 0) + min(len(str(q.get("explanation"))), 2000) / 2000
+        if sc > bs: best, bs = q, sc
+    return best
+
+def template_check(jid, qs):
+    """Flag every question (not yet reviewed) that deviates from the model: exactly 5 options, stem, answer in options, explanation, notes, images present, image/reference links resolvable."""
+    try: names = {os.path.basename(f["name"]) for f in call("files", qs="&id=" + jid).get("files", [])}
+    except Exception: names = None
+    g = golden(qs, names)
+    n = max(1, len(qs)); pct = lambda f: sum(1 for q in qs if f(q)) / n
+    need_exp = bool(g) and pct(lambda q: _has(q.get("explanation"))) >= 0.6
+    need_notes = bool(g) and pct(lambda q: _notes_ok(q.get("notes"))) >= 0.6
+    seen = {}
+    for q in qs: seen[q.get("number")] = seen.get(q.get("number"), 0) + 1
+    if g: print("agent: model sawal = Q%s" % g.get("number"))
+    for q in qs:
+        if q.get("reviewed") or not str(q.get("status", "")).startswith("verified") or str(q.get("status")).startswith("verified ("): continue
+        o = q.get("options") or []; ids = [str(x.get("id", "")).lower() for x in o]; bad = []
+        if len(o) != 5: bad.append(("model_options", f"options {len(o)} hain, model ke mutabiq 5 hone chahiye"))
+        if len(str(q.get("stem") or "").strip()) < 10: bad.append(("model_stem", "stem khali/bahut chhota"))
+        if str(q.get("correct_answer_id") or "").lower() not in ids: bad.append(("model_answer", "sahi jawab options mein nahi"))
+        if seen.get(q.get("number"), 0) > 1: bad.append(("model_number", "question number duplicate"))
+        if need_exp and not _has(q.get("explanation")): bad.append(("model_explanation", "explanation nahi (model sawal mein hai)"))
+        if need_notes and not _notes_ok(q.get("notes")): bad.append(("model_notes", "notes (heading+body) nahi (model sawal mein hain)"))
+        if names is not None:
+            for im in q.get("images") or []:
+                if not im.get("file") or os.path.basename(im["file"]) not in names: bad.append(("model_images", "image file result mein nahi: " + str(im.get("file"))))
+            txt = str(q.get("explanation") or "") + " " + str((q.get("notes") or {}).get("body_markdown") or "")
+            for ref in re.findall(r"!\[[^\]]*\]\(([^)\s]+)\)", txt):
+                if not ref.startswith("http") and os.path.basename(ref) not in names: bad.append(("model_ref", "markdown image link toota hua: " + ref))
+        if bad:
+            q["status"] = "flagged"; q["flags"] = list(q.get("flags") or []) + [{"code": c, "detail": d} for c, d in bad]
 
 def evidence_for(jid, bad):
     """Concrete evidence for a systematic problem: two sample flagged questions + their source page text."""

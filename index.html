@@ -587,6 +587,7 @@ const effSt=q=>(OUT.rev[q.id]&&OUT.rev[q.id].status)||q.status||"";
 const isOk=s=>/^verified|_by_human$/.test(s||"");
 // ---- markdown (explanation + notes come from the source as markdown: **bold**, > quote, lists, tables, images) ----
 const REASON={
+  model_options:"Model sawal ke mutabiq 5 options hone chahiye; yahan kam/zyada mile.",model_stem:"Stem khali ya bahut chhota hai.",model_answer:"Sahi jawab ki id options mein nahi mili.",model_number:"Ye question number dobara aaya hai.",model_explanation:"Model sawal mein explanation hai, yahan nahi mili.",model_notes:"Model sawal mein notes (heading+body) hain, yahan nahi mile.",model_images:"Image result mein maujood nahi (file toot gayi).",model_ref:"Explanation/notes ka image link toota hua hai.",
   low_explanation_match:"Explanation source text se match nahi hui: parser ne explanation kaat/badal di ho sakti hai, ya source ka explanation hissa nahi mila. Source page se compare karo.",
   low_stem_match:"Sawal ka text source se match nahi hua.",low_option_match:"Koi option source se match nahi hua (galat ya adhoora padha gaya).",
   option_count_mismatch:"Parsed options ki ginti source ke options se alag hai.",answer_signals_disagree:"Sahi jawab ke signals aapas mein alag hain (green marker / explanation / percentage). Source page par asli marker dekho.",
