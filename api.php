@@ -251,6 +251,9 @@ case 'propose': {   // Termux Claude posts a proposed fix for one flagged questi
     $id = safe_id((string)($j['job'] ?? '')); $qid = safe_id((string)($j['qid'] ?? '')); if ($id === '' || $qid === '') bad('job/qid chahiye');
     $dir = "$DATA/proposals"; if (!is_dir($dir)) @mkdir($dir, 0775, true); $f = "$dir/$id.json";
     $aid = fn($v) => substr(preg_replace('/[^a-h]/', '', strtolower((string)$v)), 0, 1);
+    if (!empty($j['agrees'])) { $rf = "$DATA/review"; if (!is_dir($rf)) @mkdir($rf, 0775, true); $rf .= "/$id.json";   // Claude re-read the sources and confirms the parse: mark verified, no proposal
+        jmod($rf, function ($x) use ($qid, $j) { if (!isset($x[$qid]) || ($x[$qid]['status'] ?? '') === 'verified (claude-confirmed)') $x[$qid] = ['status' => 'verified (claude-confirmed)', 'edit' => new stdClass(), 'note' => substr((string)($j['note'] ?? ''), 0, 500), 'ts' => time()]; return $x; });
+        jmod($f, function ($x) use ($qid) { unset($x[$qid]); return $x; }); out(['ok' => true]); }
     if (!empty($j['clear'])) { jmod($f, function ($x) use ($qid) { unset($x[$qid]); return $x; }); out(['ok' => true]); }
     $p = (array)($j['proposal'] ?? []); $r = ['ts' => time(), 'stem' => substr((string)($p['stem'] ?? ''), 0, 6000), 'explanation' => substr((string)($p['explanation'] ?? ''), 0, 20000),
         'correct_answer_id' => $aid($p['correct_answer_id'] ?? ''), 'confidence' => in_array(($p['confidence'] ?? ''), ['high', 'medium', 'low'], true) ? $p['confidence'] : 'low',

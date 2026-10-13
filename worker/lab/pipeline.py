@@ -73,7 +73,7 @@ def run(pdf, out_dir, limit=None, mode="auto", use_vision=True, skip_parse=False
             qs = vision_fix.fix_flagged(qs, results, src, budget, log)
             progress("Vision fix", len(flagged), len(flagged), "questions", "ok")
         else:
-            for k in flagged: results[k].update({"status": "needs_human", "note": "vision fix disabled (--no-vision)"})
+            for k in flagged: results[k].update({"status": "needs_human", "note": "API vision band hai (Off). Termux Claude se auto-fix ya aap review karo."})
         if use_vision and budget.error and not budget.calls and not budget.cache_hits:
             notes.append(f"vision fix could not run: {budget.error}; flagged questions are marked needs_human")
     notes += src.warnings[:10]

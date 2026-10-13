@@ -197,6 +197,9 @@ h2{font-family:var(--disp);color:var(--brand2);letter-spacing:.16em}h2::before{c
 .fgrp{margin:6px 0;border:1px solid var(--line);border-radius:12px;padding:6px 12px;background:var(--soft)}.fgrp summary{cursor:pointer;font-weight:600;min-height:32px;display:flex;align-items:center;gap:8px}.fgrp summary small{color:var(--muted);font-weight:400}
 .flist{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:2px 14px;margin:6px 0;font-size:13px}.flist a{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin:8px 0}.gal img{width:100%;height:90px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:8px}
+.md p{margin:.5em 0}.md ul{margin:.4em 0;padding-left:1.3em}.md blockquote{margin:.5em 0;padding:6px 12px;border-left:3px solid var(--brand);background:var(--brand-soft);border-radius:0 8px 8px 0}
+.md table{border-collapse:collapse;width:100%;font-size:13px;display:block;overflow-x:auto}.md th,.md td{border:1px solid var(--line);padding:4px 8px;text-align:left}.md img{max-width:100%;border-radius:8px;background:#fff;margin:6px 0}.md h2{font-size:15px;letter-spacing:0;text-transform:none;color:var(--brand2);margin:.8em 0 .3em}.md h2::before{content:""}
+.why{font-size:12px;color:var(--muted);margin-top:3px;font-family:var(--sans)}
 .pal{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.6);display:grid;align-items:start;justify-items:center;padding:12vh 12px 0}
 .pal>div{width:100%;max-width:520px;background:var(--card);border:1px solid var(--brand);border-radius:14px;box-shadow:0 0 40px -8px var(--brand);overflow:hidden}
 .pal input{border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;font-family:var(--mono)}
@@ -575,9 +578,46 @@ const OUT={id:null,files:[],cur:null,data:null,rawText:"",qi:0,raw:false,err:"",
 const qList=()=>OUT.data&&Array.isArray(OUT.data.questions)?OUT.data.questions:[];
 const qStem=q=>q.stem!=null?q.stem:q.text;
 const stCls=s=>s==="needs_human"?"needs_human":s==="approved_by_human"||s==="edited_by_human"?"human":/^verified/.test(s||"")?"verified":"";
-const stTxt=s=>({approved_by_human:"approved by you",edited_by_human:"edited by you",needs_human:"needs human","verified (vision-fixed)":"verified (vision-fixed)"}[s]||s||"");
+const stTxt=s=>({approved_by_human:"approved by you",edited_by_human:"edited by you",needs_human:"needs human","verified (vision-fixed)":"verified (vision-fixed)","verified (claude-confirmed)":"Claude ne dobara padha ✓"}[s]||s||"");
 const effSt=q=>(OUT.rev[q.id]&&OUT.rev[q.id].status)||q.status||"";
 const isOk=s=>/^verified|_by_human$/.test(s||"");
+// ---- markdown (explanation + notes come from the source as markdown: **bold**, > quote, lists, tables, images) ----
+const REASON={
+  low_explanation_match:"Explanation source text se match nahi hui: parser ne explanation kaat/badal di ho sakti hai, ya source ka explanation hissa nahi mila. Source page se compare karo.",
+  low_stem_match:"Sawal ka text source se match nahi hua.",low_option_match:"Koi option source se match nahi hua (galat ya adhoora padha gaya).",
+  option_count_mismatch:"Parsed options ki ginti source ke options se alag hai.",answer_signals_disagree:"Sahi jawab ke signals aapas mein alag hain (green marker / explanation / percentage). Source page par asli marker dekho.",
+  answer_unconfirmed:"Sahi jawab sirf peer-percentage se andaza hua hai; koi marker ya explanation confirm nahi karta.",image_possibly_missing:"Sawal kisi image ka zikr karta hai magar koi image link nahi hui.",
+  explanation_truncated:"Explanation beech mein kat gayi lagti hai.",noise_leak:"Sawal/options mein app ka faltu text (time, button, URL) aa gaya.",parser_warning:"Parser ne khud warning di.",
+  skipped_numbers:"Sawal numbers mein gap hai: koi sawal chhut gaya ho sakta hai.",duplicate_number:"Ek hi sawal number do baar aaya.",source_not_located:"Ye sawal source text mein dhoondha nahi ja saka, is liye match check nahi hua.",
+  percentages_sum:"Options ki percentages ka jod 100% ke qareeb nahi.",empty_stem:"Sawal ka text khali hai.",empty_explanation:"Explanation khali hai.",too_few_options:"2 se kam options mile.",
+  no_valid_correct_answer:"Sahi jawab set nahi / galat id hai.",multiple_correct_marked:"Ek se zyada option sahi mark hue.",option_ids_not_sequential:"Option ids a,b,c.. ki tarteeb mein nahi.",image_uncertain:"Image ki qism (zaroori / faltu) tay nahi ho saki."};
+const mdEsc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function mdImg(u){const nm=String(u).split("/").pop();const f=OUT.files.find(x=>x.name===u||x.name.endsWith("/"+nm));return f?fileUrl(f.name):""}
+function mdInline(s){
+  s=mdEsc(s).replace(/&lt;br&gt;/g,"<br>");
+  s=s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g,(m,a,u)=>{const src=mdImg(u);return src?`<img alt="${a}" loading="lazy" src="${mdEsc(src)}">`:`<span class="note">[image: ${mdEsc(u.split("/").pop())} zip mein nahi]</span>`});
+  s=s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g,'$1<a href="$2" target="_blank" rel="noopener">$2</a>');
+  return s.replace(/\*\*(.+?)\*\*/g,"<b>$1</b>").replace(/(^|[^*])\*(?!\s)(.+?)\*(?!\*)/g,"$1<i>$2</i>");
+}
+function md(src){
+  if(!src)return"";const L=String(src).split("\n");let out="",stack=0,i=0;const close=n=>{while(stack>n){out+="</ul>";stack--}};
+  while(i<L.length){
+    const l=L[i];
+    if(/^\s*\|.*\|\s*$/.test(l)&&i+1<L.length&&/^\s*\|[\s:|-]+\|\s*$/.test(L[i+1])){
+      close(0);const row=r=>r.trim().replace(/^\||\|$/g,"").split("|").map(c=>c.trim());const hc=row(l);
+      out+="<table>"+(hc.every(c=>!c)?"":"<tr>"+hc.map(c=>`<th>${mdInline(c)}</th>`).join("")+"</tr>");i+=2;
+      while(i<L.length&&/^\s*\|.*\|\s*$/.test(L[i])){out+="<tr>"+row(L[i]).map(c=>`<td>${mdInline(c)}</td>`).join("")+"</tr>";i++}
+      out+="</table>";continue}
+    let m;
+    if((m=l.match(/^(#{1,4})\s+(.*)/))){close(0);out+=`<h2>${mdInline(m[2])}</h2>`}
+    else if((m=l.match(/^(\s*)-\s+(.*)/))){const d=Math.floor(m[1].length/2)+1;while(stack<d){out+="<ul>";stack++}close(d);out+=`<li>${mdInline(m[2])}</li>`}
+    else if(l.startsWith(">")){close(0);const b=[];while(i<L.length&&L[i].startsWith(">")){b.push(L[i].replace(/^>\s?/,""));i++}out+=`<blockquote>${mdInline(b.join(" "))}</blockquote>`;continue}
+    else if(l.trim()===""){close(0)}
+    else{close(0);out+=`<p>${mdInline(l)}</p>`}
+    i++;
+  }
+  close(0);return out;
+}
 const qText=q=>(qStem(q)+" "+(q.options||[]).map(o=>o.text).join(" ")+" "+(typeof q.explanation==="string"?q.explanation:"")).toLowerCase();
 function visible(){
   const qs=qList(),s=(OUT.q||"").trim().toLowerCase();
@@ -643,10 +683,11 @@ const hasFile=n=>OUT.files.some(x=>x.name===n);
 function qHTML(q){
   const st=effSt(q),ed=OUT.edit&&OUT.rev[q.id]===undefined?true:OUT.edit;
   const ops=(q.options||[]).map(o=>`<div class="opt ${o.id===q.correct_answer_id?"ok":""}"><b>${esc(String(o.id||"").toUpperCase())}${o.id===q.correct_answer_id?" ✓":""}</b><span>${esc(String(o.text||"").replace(/^\s*[A-H][\.\)]\s+/,""))}</span>${o.percentage!=null?`<span class="note" style="margin:0 0 0 auto">${esc(o.percentage)}%</span>`:""}</div>`).join("");
-  const fl=(q.flags||[]).map(f=>`<div class="warns"><b>${esc(f.code||f)}</b>${f.detail?": "+esc(f.detail):""}</div>`).join("")+(q.warnings||[]).map(w=>`<div class="warns">${esc(w)}</div>`).join("");
-  const note=q.note?`<div class="warns">${esc(q.note)}</div>`:"";
+  const fl=(q.flags||[]).map(f=>{const c=f.code||f;return `<div class="warns"><b>${esc(c)}</b>${f.detail?": "+esc(f.detail):""}${REASON[c]?`<div class="why">${esc(REASON[c])}</div>`:""}</div>`}).join("")+(q.warnings||[]).map(w=>`<div class="warns">${esc(w)}</div>`).join("");
+  const note=q.note?`<div class="why" style="margin:6px 0">${esc(q.note)}</div>`:"";
   const imgs=(q.images||[]).filter(x=>hasFile(x.file)).map(x=>`<img class="qimg" loading="lazy" src="${esc(fileUrl(x.file))}" alt="question image">`).join("");
-  const ex=q.explanation?`<details class="ex"><summary>Explanation</summary><div class="qtxt">${esc(typeof q.explanation==="string"?q.explanation:JSON.stringify(q.explanation,null,2))}</div></details>`:"";
+  const nt=q.notes&&(q.notes.heading||q.notes.body_markdown)?`<details class="ex"><summary>Notes: ${esc(q.notes.heading||"")}</summary><div class="md">${md(String(q.notes.body_markdown||"").replace(/^#\s+.*\n+/,""))}</div></details>`:"";
+  const ex=q.explanation?`<details class="ex" open><summary>Explanation</summary><div class="md">${md(typeof q.explanation==="string"?q.explanation:JSON.stringify(q.explanation,null,2))}</div></details>${nt}`:nt;
   const pg=!isOk(st)&&(q.pages||[]).length?`<div class="pg"><div><div class="note" style="margin:0 0 4px">Source page ${esc(q.pages.join(", "))}</div>${q.pages.slice(0,2).map(p=>{const n="_pages/page_"+String(p).padStart(3,"0")+".png";return hasFile(n)?`<img loading="lazy" src="${esc(fileUrl(n))}" alt="source page ${p}">`:`<p class="note">Page image is zip mein nahi (page ${p}).</p>`}).join("")}</div><div><div class="note" style="margin:0 0 4px">Parsed</div><div class="qtxt">${esc(qStem(q))}</div>${ops}</div></div>`:"";
   const editor=OUT.edit?`<div style="display:grid;gap:8px;margin-top:10px"><textarea id="edStem" aria-label="stem">${esc(qStem(q))}</textarea>
     <select id="edAns" aria-label="sahi jawab">${(q.options||[]).map(o=>`<option value="${esc(o.id)}" ${o.id===q.correct_answer_id?"selected":""}>Sahi jawab: ${esc(String(o.id).toUpperCase())}</option>`).join("")}</select>
@@ -697,7 +738,7 @@ function drawOut(){
   if(OUT.data&&Array.isArray(OUT.data.questions)&&!qs.length)h+='<div class="warns">0 sawal bane: is PDF ka format parser se match nahi hua. "Claude ko bhejo" dabao.</div>';
   if(qs.length){
     const c={ok:0,fixed:0,attn:0,hum:0};
-    qs.forEach(q=>{const s=effSt(q);if(s==="verified")c.ok++;else if(s==="verified (vision-fixed)")c.fixed++;else if(/_by_human$/.test(s))c.hum++;else c.attn++});
+    qs.forEach(q=>{const s=effSt(q);if(s==="verified")c.ok++;else if(/^verified \(/.test(s))c.fixed++;else if(/_by_human$/.test(s))c.hum++;else c.attn++});
     h+=`<div class="tiles"><div class="tile"><b>${qs.length}</b><span>sawal</span></div><div class="tile"><b class="ok-t">${c.ok}</b><span>verified</span></div><div class="tile"><b>${c.fixed}</b><span>vision-fixed</span></div><div class="tile"><b class="${c.attn?"bad-t":""}">${c.attn}</b><span>dekhna baqi</span></div><div class="tile"><b>${c.hum}</b><span>aapne dekhe</span></div></div>`;
     const v=visible();
     const codes={};qs.forEach(q=>{if(isOk(effSt(q)))return;(q.flags||[]).forEach(f=>{const k=f.code||f;codes[k]=(codes[k]||0)+1})});

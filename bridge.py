@@ -130,8 +130,8 @@ def fetch_attachments(cmd):
             print("attachment nahi aayi:", fn, e)
     return paths
 
-def ask_claude(cmd, auto=False):
-    extra = ""
+def ask_claude(cmd, auto=False, evidence=""):
+    extra = ("\n\nEVIDENCE from the hub:\n" + evidence) if evidence else ""
     atts = fetch_attachments(cmd)
     if atts:
         extra += "\n\nUser ne ye files bheji hain (Read tool se kholo, PDF/image dono padh sakte ho): " + ", ".join(atts)
@@ -158,12 +158,54 @@ def ask_claude(cmd, auto=False):
                         "--disallowedTools", "Bash,Write,WebFetch,WebSearch,NotebookEdit"], WORK, TIMEOUT)
 
 
-FIX_PROMPT = ("Tum ek strict MCQ verifier ho. Attached files: source PDF ke page image(s) aur q.json (parser ne ek sawal ka jo output diya + uske flags). "
- "Kaam: image padh kar sawal EXACTLY waisa likho jaisa source mein chhapa hai. Rules: sirf wohi likho jo image mein saaf padha ja sake; KABHI andaza mat lagao; "
- "source ki spelling theek mat karo; option ids a,b,c,... hon; percentage wo peer-% hai jo option ke saath chhapi ho (nahi hai to null); "
- "sahi jawab wohi hai jo source mark kare (tick / 'correct answer is X' / explanation); agar source mein saaf nahi to correct_answer_id null aur confidence low. "
- "Jo hissa padha na jaye uska zikr notes mein karo. Jawab mein SIRF ek JSON object do, koi markdown ya extra text nahi: "
+FIX_PROMPT = ("Tum ek strict MCQ verifier ho. Attached files: source PDF ke page image(s), q.json (parser ne ek sawal ka jo output diya + uske flags) aur (agar ho) page ka text (pdftotext/OCR). "
+ "Kaam: image padh kar sawal EXACTLY waisa likho jaisa source mein chhapa hai. Image aakhri authority hai; text file sirf madad hai (OCR galat ho sakta hai). "
+ "Rules: sirf wohi likho jo saaf padha ja sake; KABHI andaza mat lagao; source ki spelling theek mat karo; option ids a,b,c,... hon; "
+ "percentage wo peer-% hai jo option ke saath chhapi ho (nahi hai to null); sahi jawab wohi hai jo source mark kare (green bar / tick / 'correct answer is X'); "
+ "NOTE: sabse zyada peer-% wala option aksar sahi nahi hota, usay sahi jawab mat samajhna. "
+ "agar source mein saaf nahi to correct_answer_id null aur confidence low. explanation markdown mein (**bold**, > quote, lists) waisi hi jaisi source mein hai, poori. "
+ "Jo hissa padha na jaye uska zikr notes mein karo. Jawab mein SIRF ek JSON object do, koi markdown fence ya extra text nahi: "
  '{"stem":"","options":[{"id":"a","text":"","percentage":null}],"correct_answer_id":"a","explanation":"","confidence":"high|medium|low","notes":""}')
+
+def get_file(jid, name):
+    try:
+        req = urllib.request.Request(f"{HUB}/api.php?a=file&id={jid}&name=" + urllib.parse.quote(name), headers={"X-Token": TOKEN})
+        with urllib.request.urlopen(req, timeout=120) as r: return r.read()
+    except Exception:
+        return None
+
+def _nt(s): return re.sub(r"\W+", " ", str(s or "").lower()).strip()
+def _sim(a, b):
+    import difflib
+    return difflib.SequenceMatcher(None, _nt(a)[:3000], _nt(b)[:3000]).ratio()
+
+def agrees(parsed, prop):
+    """True only if Claude's independent re-read of the page equals the parser output (so the flag was a false alarm)."""
+    try:
+        if prop.get("confidence") != "high" or not prop.get("correct_answer_id"): return False
+        po, qo = parsed.get("options") or [], prop.get("options") or []
+        if len(po) != len(qo) or any(str(a.get("id")).lower() != str(b.get("id")).lower() for a, b in zip(po, qo)): return False
+        if str(parsed.get("correct_answer_id") or "").lower() != str(prop.get("correct_answer_id") or "").lower(): return False
+        if _sim(parsed.get("stem") or parsed.get("text"), prop.get("stem")) < 0.97: return False
+        if any(_sim(a.get("text"), b.get("text")) < 0.97 for a, b in zip(po, qo)): return False
+        if parsed.get("explanation") and prop.get("explanation") and _sim(parsed["explanation"], prop["explanation"]) < 0.9: return False
+        return True
+    except Exception:
+        return False
+
+def do_fix(job, qid, paths, parsed=None):
+    """Claude (read-only) re-reads the page images and posts a PROPOSAL to the hub. Returns the proposal dict or None."""
+    out = run_claude(["-p", FIX_PROMPT + "\nFiles: " + ", ".join(paths), "--add-dir", ATTDIR,
+                      "--allowedTools", "Read", "--disallowedTools", "Bash,Write,Edit,WebFetch,WebSearch,NotebookEdit"], WORK, 420)
+    m2 = re.search(r"\{.*\}", out, re.S)
+    try: prop = json.loads(m2.group(0)) if m2 else None
+    except Exception: prop = None
+    if not isinstance(prop, dict) or not prop.get("options"):
+        post(f"Fix tayyar nahi hua ({qid}): Claude ka jawab JSON nahi tha: {out[:300]}"); return None
+    same = bool(parsed) and agrees(parsed, prop)
+    call("propose", {"job": job, "qid": qid, "proposal": prop, "agrees": same})
+    post(f"{'Dobara padh kar confirm hua' if same else 'Fix tayyar'} ({qid}): confidence {prop.get('confidence','?')}." + ("" if same else " Viewer mein Accept ya Reject karo."))
+    return prop
 
 def handle_fixq(text):
     m = re.search(r"\[fixq:([A-Za-z0-9_-]+):([A-Za-z0-9_-]+)\]", text)
@@ -171,17 +213,51 @@ def handle_fixq(text):
     atts = fetch_attachments(text)
     if not atts:
         post(f"Fix {qid}: attachments nahi mili."); return
-    out = run_claude(["-p", FIX_PROMPT + "\nFiles: " + ", ".join(atts), "--add-dir", ATTDIR,
-                        "--allowedTools", "Read", "--disallowedTools", "Bash,Write,Edit,WebFetch,WebSearch,NotebookEdit"], WORK, 420)
-    m2 = re.search(r"\{.*\}", out, re.S)
-    try:
-        prop = json.loads(m2.group(0)) if m2 else None
-    except Exception:
-        prop = None
-    if not isinstance(prop, dict) or not prop.get("options"):
-        post(f"Fix tayyar nahi hua ({qid}): Claude ka jawab JSON nahi tha: {out[:300]}"); return
-    call("propose", {"job": job, "qid": qid, "proposal": prop})
-    post(f"Fix tayyar ({qid}): confidence {prop.get('confidence','?')}. Viewer mein Accept ya Reject karo.")
+    parsed = None
+    for p in atts:
+        if p.endswith(".json"):
+            try: parsed = json.load(open(p, encoding="utf-8"))
+            except Exception: pass
+    do_fix(job, qid, atts, parsed)
+
+def bad_questions(jid):
+    raw = get_file(jid, "student_view.json")
+    if not raw: return None, []
+    try: qs = json.loads(raw.decode("utf-8")).get("questions", [])
+    except Exception: return None, []
+    return qs, [q for q in qs if not str(q.get("status", "")).startswith(("verified", "approved", "edited", "claude_"))]
+
+def evidence_for(jid, bad):
+    """Concrete evidence for a systematic problem: two sample flagged questions + their source page text."""
+    L = []
+    for q in bad[:2]:
+        L.append(f"--- sample Q{q.get('number')} flags={q.get('flags')} source_match={q.get('source_match')} pages={q.get('pages')}")
+        L.append("stem: " + str(q.get("stem"))[:300]); L.append("explanation(start): " + str(q.get("explanation"))[:300])
+        for p in (q.get("pages") or [])[:3]:
+            t = get_file(jid, f"raw_text/page_{int(p):03d}.txt")
+            L.append(f"[source text page {p}]\n" + (t.decode("utf-8", "replace")[:1800] if t else "(raw_text nahi mila)"))
+    return "\n".join(L)
+
+def auto_questions(jid, bad):
+    """Per-question auto fix: page images + page text go to Claude; confirmed re-reads are marked verified, differences wait for Accept."""
+    os.makedirs(ATTDIR, exist_ok=True); done = 0
+    for q in bad[:12]:
+        fixes[:] = [t for t in fixes if time.time() - t < 3600]
+        if len(fixes) >= MAX_FIX_PER_HOUR: post("Fix ki ghante ki had poori; baqi sawal thori der baad (ya viewer se)."); break
+        fixes.append(time.time()); paths = []
+        for p in (q.get("pages") or [])[:2]:
+            for nm, ext in ((f"_pages/page_{int(p):03d}.png", "png"), (f"raw_text/page_{int(p):03d}.txt", "txt")):
+                data = get_file(jid, nm)
+                if data:
+                    fp = os.path.join(ATTDIR, f"{jid}_q{q.get('number')}_p{p}.{ext}"); open(fp, "wb").write(data); paths.append(fp)
+        if not any(x.endswith(".png") for x in paths): continue
+        qj = os.path.join(ATTDIR, f"{jid}_q{q.get('number')}.json"); json.dump({k: q.get(k) for k in ("number", "stem", "options", "correct_answer_id", "explanation", "flags", "pages")}, open(qj, "w"), ensure_ascii=False, indent=1); paths.append(qj)
+        post(f"▸ Q{q.get('number')} dobara padh raha hun")
+        try:
+            if do_fix(jid, str(q.get("id")), paths, q): done += 1
+        except Exception as e:
+            post(f"Q{q.get('number')} fix error: {e}")
+    return done
 
 def record_edits(cmd):
     """Agar files badli hain: log, commit, worker.zip rebuild. Return summary ya ''."""
@@ -216,11 +292,13 @@ def record_edits(cmd):
         tail = f"worker.zip hub par upload nahi hua ({e}); local worker.zip bana hai."
     return "Badli hui files: " + ", ".join(changed) + ". " + tail
 
+fixes = []
+
 def main():
     setup_workdir()
     if not check_claude():
         print("WARNING: claude CLI theek se nahi chal raha. Termux mein `claude --version` aur `claude` (login) pehle khud chala kar dekho.")
-    since = int(time.time() * 1000); runs = []; autos = []; fixes = []; requeues = {}; last_hb = 0
+    since = int(time.time() * 1000); runs = []; autos = []; requeues = {}; last_hb = 0
     print("Bridge chal raha hai. Ctrl+C se band.")
     while True:
         try:
@@ -250,8 +328,26 @@ def main():
                     post("Ghante ki had (12) poori ho gayi, thori der baad likho."); continue
                 runs.append(time.time())
                 print("cmd:", text); post("Auto report mili, dekh raha hun..." if auto else "Dekh raha hun...")
+                evidence = ""
+                mj0 = re.search(r"\[job:([A-Za-z0-9_-]+)\]", text)
+                if auto and mj0 and " flagged" in text and " fail" not in text:
+                    qs_all, bad = bad_questions(mj0.group(1))
+                    if bad:
+                        from collections import Counter
+                        top, n = Counter(f.get("code") if isinstance(f, dict) else f for q in bad for f in q.get("flags", [])).most_common(1)[0]
+                        if len(bad) >= 6 and n >= 0.5 * len(bad):
+                            evidence = f"{len(bad)}/{len(qs_all)} questions are flagged and {n} of them share the flag '{top}': a SYSTEMATIC problem in the parser/verifier, not individual content errors.\n" + evidence_for(mj0.group(1), bad)
+                        else:
+                            try:
+                                done = auto_questions(mj0.group(1), bad)
+                                post(f"Auto-fix: {done}/{min(len(bad), 12)} flagged sawal Claude ne dobara padhe. Viewer mein dekho." )
+                            except Exception as e:
+                                post(f"Auto-fix error: {e}")
+                            continue
+                    else:
+                        post("Auto report: koi flagged sawal nahi bacha."); continue
                 try:
-                    reply = ask_claude(text, auto); extra = record_edits(text)
+                    reply = ask_claude(text, auto, evidence); extra = record_edits(text)
                     post(reply + ("\n\n" + extra if extra else ""))
                     mj = re.search(r"\[job:([A-Za-z0-9_-]+)\]", text)
                     if auto and extra.startswith("Badli hui files") and "hub par chadh gaya" in extra and mj:

@@ -33,7 +33,12 @@ class Segments:
         num, tot = q.get("set_number") or q.get("number"), q.get("set_total")
         cands = [i for i, (o, n, t) in enumerate(self.marks) if n == num and (not tot or t == tot)]
         if cands:
-            i = cands[0]; a = self.marks[i][0]; b = self.marks[i + 1][0] if i + 1 < len(self.marks) else len(self.full)
+            # PassMedicine repeats the "Question N of M" header on the answer/explanation page(s) of the SAME question, so the segment must run
+            # to the next marker of a DIFFERENT question (stopping at the repeat cut off every explanation: the 37 false low_explanation_match flags).
+            i = cands[0]; a = self.marks[i][0]; n0, t0 = self.marks[i][1], self.marks[i][2]
+            j = i + 1
+            while j < len(self.marks) and (self.marks[j][1], self.marks[j][2]) == (n0, t0): j += 1
+            b = self.marks[j][0] if j < len(self.marks) else len(self.full)
             return self.full[a:b], list(range(self.page_of(a), self.page_of(max(a, b - 1)) + 1)), "marker"
         # fuzzy: best page for the stem
         stem = norm(q.get("text"))[:200]; best, bp = 0, None
@@ -76,7 +81,7 @@ def verify_question(q, seg_text, pages, how, images_expected=None):
     if not (q.get("explanation") or "").strip(): add("empty_explanation")
     # (d) answer signals
     sig = answer_signals(q); info["answer_signals"] = sig
-    vals = set(sig.values())
+    vals = {x for k, x in sig.items() if k != "max_percentage"}   # the most-picked option by peers is often NOT the right answer, so it must not count as a disagreeing signal
     if len(vals) > 1: add("answer_signals_disagree", str(sig))
     elif {k.split(":")[0] for k in sig} <= {"peer_percentage", "max_percentage"}:
         add("answer_unconfirmed", "only the peer-response percentage supports this answer (no marker, no explanation text)")
@@ -86,7 +91,11 @@ def verify_question(q, seg_text, pages, how, images_expected=None):
         stem = fuzz.partial_ratio(norm(q.get("text")), sn) if q.get("text") else 0
         om = [fuzz.partial_ratio(norm(_strip_opt(o.get("text"))), sn) for o in opts if (o.get("text") or "").strip()]
         ex = (q.get("explanation") or "")
-        sents = [s for s in re.split(r"(?<=[.!?])\s+", re.sub(r"^\W*explanation\W*", "", ex, flags=re.I)) if len(s) >= 25]
+        ex_plain = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", ex)                      # markdown images
+        ex_plain = re.sub(r"^\s*>\s?", "", ex_plain, flags=re.M)                       # blockquote markers
+        ex_plain = re.sub(r"^\s*[-*]\s+|^#+\s*", " ", ex_plain, flags=re.M)            # list / heading markers
+        ex_plain = re.sub(r"\*\*|__|`", " ", ex_plain)                                 # bold / code markers
+        sents = [s for s in re.split(r"(?<=[.!?])\s+|\n+", re.sub(r"^\W*explanation\W*", "", ex_plain, flags=re.I)) if len(s) >= 25]
         em = (100 * sum(1 for s in sents if fuzz.partial_ratio(norm(s), sn) >= 88) / len(sents)) if sents else 100.0
         info["match"] = {"stem": round(stem), "options_mean": round(sum(om) / len(om)) if om else 0, "options_min": round(min(om)) if om else 0, "explanation": round(em)}
         if stem < 90: add("low_stem_match", f"{stem:.0f}%")

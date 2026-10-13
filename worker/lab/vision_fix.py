@@ -69,5 +69,5 @@ def fix_flagged(questions, results, src, budget, log, dpi_retry=300):
                 qs[i] = cand; r.update({"status": "verified (vision-fixed)", "flags": [], "info": ni, "evidence": fixed.get("answer_evidence")}); attempt_ok = True; break
             why = f"still flagged after vision: {[f['code'] for f in hard]}"
         if not attempt_ok:
-            r.update({"status": "needs_human", "note": why or "vision fix failed", "page_images": [os.path.join("_pages", f"page_{p:03d}.png") for p in pages]})
+            r.update({"status": "needs_human", "note": ("API vision band (key nahi): Termux Claude se auto-fix ya aap review karo." if "ANTHROPIC_API_KEY" in (why or "") else (why or "vision fix failed")), "page_images": [os.path.join("_pages", f"page_{p:03d}.png") for p in pages]})
     return qs
