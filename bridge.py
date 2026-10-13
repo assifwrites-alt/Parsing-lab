@@ -221,6 +221,50 @@ def do_fix(job, qid, paths, parsed=None, spot=False):
     post(f"{'Dobara padh kar confirm hua' if same else 'Fix tayyar'} ({qid}): confidence {prop.get('confidence','?')}." + ("" if same else " Viewer mein Accept ya Reject karo."))
     return prop
 
+ASSET_PROMPT = (FIX_PROMPT.replace('Jawab mein SIRF ek JSON object do, koi markdown fence ya extra text nahi: ', '') .split('{"stem"')[0] +
+ "EXTRA KAAM (notes, images, links): attached image files (figure/diagram jo parser ne nikali) khud Read karke dekho. "
+ "images = sirf wo files jo is sawal ke figure/diagram hain (file ka naam EXACTLY wahi jo neeche list mein hai); bekar/dusre sawal ki/decorative files mat rakho. "
+ "notes = page par jo 'Notes' section hai (heading + poora body markdown mein); agar source mein notes nahi hain to notes null aur notes_in_source false. "
+ "explanation/notes mein image link sirf ![](images/<file ka naam>) form mein, aur sirf unhi files ke liye jo list mein hain; toota hua link hatao ya sahi file se badlo. "
+ "Jawab mein SIRF ek JSON object do, koi markdown fence ya extra text nahi: "
+ '{"stem":"","options":[{"id":"a","text":"","percentage":null}],"correct_answer_id":"a","explanation":"","notes":{"heading":"","body_markdown":""},"notes_in_source":true,"images":[{"file":"","reason":""}],"confidence":"high|medium|low"}')
+
+def _read_json(out):
+    m = re.search(r"\{.*\}", out, re.S)
+    try: d = json.loads(m.group(0)) if m else None
+    except Exception: d = None
+    return d if isinstance(d, dict) and d.get("options") else None
+
+def assets_agree(a, b):
+    """Two independent reads of the page give the same notes, image set, answer and options."""
+    try:
+        if not agrees(a, b): return False
+        if bool(a.get("notes_in_source", True)) != bool(b.get("notes_in_source", True)): return False
+        if a.get("notes_in_source", True) and _sim((a.get("notes") or {}).get("body_markdown"), (b.get("notes") or {}).get("body_markdown")) < 0.9: return False
+        return sorted(os.path.basename(str(i.get("file"))) for i in a.get("images") or []) == sorted(os.path.basename(str(i.get("file"))) for i in b.get("images") or [])
+    except Exception: return False
+
+def do_asset_fix(jid, q, paths, names):
+    """Claude looks at the page, the extracted image files and the notes itself; two matching reads -> applied automatically."""
+    n = q.get("number"); cand = [nm for nm in sorted(names) if f"_q{n}_" in nm][:8]
+    for k in (q.get("images") or []):
+        b0 = os.path.basename(str(k.get("file")))
+        if b0 in names and b0 not in cand: cand.append(b0)
+    full = {os.path.basename(f["name"]): f["name"] for f in call("files", qs="&id=" + jid).get("files", [])}
+    imgp = []
+    for nm in cand[:8]:
+        d = get_file(jid, full.get(nm, nm))
+        if d: fp = os.path.join(ATTDIR, f"{jid}_{nm}"); open(fp, "wb").write(d); imgp.append((nm, fp))
+    msg = ASSET_PROMPT + "\nFiles: " + ", ".join(paths) + "\nAvailable image files (name -> path): " + "; ".join(f"{a} -> {b}" for a, b in imgp) + ("" if imgp else "(koi image file nahi mili)")
+    args = ["-p", msg, "--add-dir", ATTDIR, "--allowedTools", "Read", "--disallowedTools", "Bash,Write,Edit,WebFetch,WebSearch,NotebookEdit"]
+    r1 = _read_json(run_claude(args, WORK, 480)); r2 = _read_json(run_claude(args, WORK, 480)) if r1 else None
+    if r1 and r2 and r1.get("confidence") == "high" and r2.get("confidence") == "high" and assets_agree(r1, r2):
+        r1["images"] = [{"file": full[os.path.basename(str(i.get("file")))], "reason": str(i.get("reason", ""))[:200]} for i in r1.get("images") or [] if os.path.basename(str(i.get("file"))) in full]
+        call("propose", {"job": jid, "qid": str(q.get("id")), "proposal": r1, "apply": True, "note": "notes/images/links: 2 alag padhai ek jaisi"})
+        post(f"Q{n}: notes/images/links Claude ne dekh kar theek kiye (2 padhai ek jaisi)."); return r1
+    if r1: call("propose", {"job": jid, "qid": str(q.get("id")), "proposal": r1, "agrees": False}); post(f"Q{n}: do padhai alag/kam yaqeen, proposal viewer mein hai.")
+    return r1
+
 def handle_fixq(text):
     m = re.search(r"\[fixq:([A-Za-z0-9_-]+):([A-Za-z0-9_-]+)\]", text)
     job, qid = m.group(1), m.group(2)
@@ -323,7 +367,9 @@ def auto_questions(jid, bad, spot=False):
         qj = os.path.join(ATTDIR, f"{jid}_q{q.get('number')}.json"); json.dump({k: q.get(k) for k in ("number", "stem", "options", "correct_answer_id", "explanation", "flags", "pages")}, open(qj, "w"), ensure_ascii=False, indent=1); paths.append(qj)
         post(f"▸ Q{q.get('number')} dobara padh raha hun")
         try:
-            pr = do_fix(jid, str(q.get("id")), paths, q, spot)
+            if not spot and any((f.get("code") if isinstance(f, dict) else f) in STRICT for f in (q.get("flags") or [])):
+                pr = do_asset_fix(jid, q, paths, {os.path.basename(f["name"]) for f in call("files", qs="&id=" + jid).get("files", [])})
+            else: pr = do_fix(jid, str(q.get("id")), paths, q, spot)
             if pr:
                 done += 1
                 if spot and not agrees(q, pr): diffs += 1
